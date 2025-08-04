@@ -53,13 +53,11 @@ class Future:
     def _load_chain(self) -> ContractChain:
         """Loads the contract chain from the datasource."""
         if hasattr(self.datasource, 'get_contract_chain'):
-            contracts_data = self.datasource.get_contract_chain(self.root_symbol)
-            contracts = [
-                FuturesContract(
-                    self.root_symbol, c['year'], c['month_code'],
-                    exchange=self.exchange, datasource=self.datasource
-                ) for c in contracts_data
-            ]
+            contracts = self.datasource.get_contract_chain(self.root_symbol)
+            # Set exchange if not already set
+            for contract in contracts:
+                if contract.exchange is None:
+                    contract.exchange = self.exchange
             return ContractChain(self.root_symbol, contracts, self.exchange)
         logger.warning("Datasource has no 'get_contract_chain' method. Using empty chain.")
         return ContractChain(self.root_symbol, [], self.exchange)

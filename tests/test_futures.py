@@ -17,7 +17,7 @@ class MockDataSource:
     
     def get_contract_chain(self, root: str):
         """Provides a mock chain of contracts."""
-        return [{'year': 2026, 'month_code': 'H'}]
+        return [FuturesContract(root, 2026, 'H', datasource=self)]
 
     def get_futures_contract(self, root: str, year: int, month: str):
         """Return price data with a mix of standard and custom fields."""
@@ -114,13 +114,13 @@ class TestFuture:
         # Should create empty chain with warning
         assert len(future.chain) == 0
     
-    def test_load_chain_with_dict_contracts(self):
-        """Test _load_chain when datasource returns dicts"""
+    def test_load_chain_with_contracts(self):
+        """Test _load_chain when datasource returns FuturesContract objects"""
         class DictDataSource:
             def get_contract_chain(self, root_symbol):
                 return [
-                    {'year': 2026, 'month_code': 'F'},
-                    {'year': 2026, 'month_code': 'G'},
+                    FuturesContract(root_symbol, 2026, 'F', datasource=self),
+                    FuturesContract(root_symbol, 2026, 'G', datasource=self),
                 ]
         
         datasource = DictDataSource()
