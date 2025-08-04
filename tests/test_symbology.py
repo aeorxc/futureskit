@@ -115,6 +115,25 @@ class TestSymbologyConverter:
         assert self.converter.to_cme_format(partial) is None
         assert self.converter.to_short_year_format(partial) is None
     
+    def test_edge_cases(self):
+        """Test additional edge cases for coverage."""
+        # Test CME format with None check (line 80)
+        parsed = self.notation.parse("XYZ_2026")
+        assert self.converter.to_ice_format(parsed) is None
+        
+        # Test Bloomberg with None check (line 93)
+        empty_parsed = self.notation.parse("")
+        assert self.converter.to_bloomberg_format(empty_parsed) is None
+        
+        # Test Bloomberg with non-continuous, unknown root (line 116)
+        parsed = self.notation.parse("XYZ_2026F")
+        result = self.converter.to_bloomberg_format(parsed)
+        assert result == "XYZF6 Comdty"
+        
+        # Test marketplace continuous with non-continuous symbol (line 140)
+        parsed = self.notation.parse("BRN_2026F")
+        assert self.converter.to_marketplace_continuous(parsed) is None
+    
     def test_feed_conventions(self):
         """Test FeedConventions utility class."""
         assert FeedConventions.add_cme_prefix("CL26F") == "@CL26F"
