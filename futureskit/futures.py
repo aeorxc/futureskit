@@ -47,8 +47,15 @@ class Future:
         self.root_symbol = root_symbol
         self.datasource = datasource
         self.exchange = exchange
-        self.chain = self._load_chain()
+        self._chain = None  # Lazy loading
         self._notation = FuturesNotation()
+    
+    @property
+    def chain(self) -> ContractChain:
+        """Lazily load and return the contract chain."""
+        if self._chain is None:
+            self._chain = self._load_chain()
+        return self._chain
 
     def _load_chain(self) -> ContractChain:
         """Loads the contract chain from the datasource."""
