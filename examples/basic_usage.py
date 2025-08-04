@@ -84,49 +84,62 @@ class DemoDataSource(FuturesDataSource):
     
     def curve(self, 
               symbols: Union[str, List[str]], 
-              curve_date: Optional[Union[date, str]] = None,
+              curve_dates: Optional[Union[date, str, List[date], List[str]]] = None,
               fields: Optional[List[str]] = None,
               **kwargs) -> pd.DataFrame:
         """Get forward curve data."""
         if isinstance(symbols, str):
             symbols = [symbols]
         
-        if curve_date is None:
-            curve_date = date.today()
-        elif isinstance(curve_date, str):
-            curve_date = pd.to_datetime(curve_date).date()
+        # Handle curve_dates
+        if curve_dates is None:
+            curve_dates = date.today()
+        
+        # Normalize to list for consistent handling
+        if not isinstance(curve_dates, list):
+            curve_dates = [curve_dates]
+        
+        # Convert string dates
+        normalized_dates = []
+        for d in curve_dates:
+            if isinstance(d, str):
+                normalized_dates.append(pd.to_datetime(d).date())
+            else:
+                normalized_dates.append(d)
         
         if fields is None:
             fields = ['settlement']
         
         all_curves = []
         
-        for symbol in symbols:
-            # Get contracts for this symbol
-            contracts = self.get_contract_chain(symbol)
-            
-            for i, contract in enumerate(contracts[:12]):  # First 12 months
-                contract_data = {
-                    'symbol': symbol,
-                    'contract': contract.to_canonical(),
-                    'delivery_date': contract.delivery_date,
-                    'month_code': contract.month_code,
-                    'year': contract.year
-                }
+        for curve_date in normalized_dates:
+            for symbol in symbols:
+                # Get contracts for this symbol
+                contracts = self.get_contract_chain(symbol)
                 
-                # Add field data with contango
-                np.random.seed(hash(symbol) % (2**32 - 1))
-                base_price = 100 + np.random.randn() * 10
-                
-                for field in fields:
-                    if field == 'settlement':
-                        # Add contango
-                        contract_data[field] = base_price + i * 0.15
-                    elif field == 'volume':
-                        # Volume decreases for further contracts
-                        contract_data[field] = max(100, 10000 - i * 1000)
-                
-                all_curves.append(contract_data)
+                for i, contract in enumerate(contracts[:12]):  # First 12 months
+                    contract_data = {
+                        'curve_date': curve_date,
+                        'symbol': symbol,
+                        'contract': contract.to_canonical(),
+                        'delivery_date': contract.delivery_date,
+                        'month_code': contract.month_code,
+                        'year': contract.year
+                    }
+                    
+                    # Add field data with contango
+                    np.random.seed(hash(symbol) % (2**32 - 1))
+                    base_price = 100 + np.random.randn() * 10
+                    
+                    for field in fields:
+                        if field == 'settlement':
+                            # Add contango
+                            contract_data[field] = base_price + i * 0.15
+                        elif field == 'volume':
+                            # Volume decreases for further contracts
+                            contract_data[field] = max(100, 10000 - i * 1000)
+                    
+                    all_curves.append(contract_data)
         
         return pd.DataFrame(all_curves)
     
@@ -312,7 +325,7 @@ def example_4_data_access():
     # Forward curve
     curve = datasource.curve(
         symbols='BRN',
-        curve_date='2024-01-15',
+        curve_dates='2024-01-15',
         fields=['settlement', 'volume']
     )
     print("\n\nForward Curve:")

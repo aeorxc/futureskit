@@ -54,15 +54,18 @@ class FuturesDataSource(ABC):
     @abstractmethod
     def curve(self, 
               symbols: Union[str, List[str]], 
-              curve_date: Optional[Union[date, str]] = None,
+              curve_dates: Optional[Union[date, str, List[date], List[str]]] = None,
               fields: Optional[List[str]] = None,
               **kwargs) -> pd.DataFrame:
         """
-        Get forward curve data (snapshot of all contracts at a point in time).
+        Get forward curve data (snapshot of all contracts at one or more points in time).
         
         Args:
             symbols: Root symbol(s) to get curves for (e.g., 'BRN', 'CL')
-            curve_date: Date of the curve. If None, return most recent curve
+            curve_dates: Date(s) of the curve(s). Can be:
+                        - None: return most recent curve
+                        - Single date/string: return curve for that date
+                        - List of dates/strings: return curves for multiple dates
             fields: Specific fields to retrieve (e.g., ['settlement', 'volume'])
                     If None, return all available fields
             **kwargs: Additional implementation-specific parameters
@@ -70,6 +73,7 @@ class FuturesDataSource(ABC):
         Returns:
             DataFrame with forward curve data. Structure is implementation-specific
             but typically includes contract identifiers and requested fields.
+            When multiple dates are requested, the DataFrame should include a date column.
             
         Raises:
             NotImplementedError: Must be implemented by subclasses
