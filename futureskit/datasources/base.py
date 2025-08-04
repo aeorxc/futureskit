@@ -27,7 +27,6 @@ class FuturesDataSource(ABC):
                symbols: Union[str, List[str]], 
                fields: Optional[List[str]] = None,
                start_date: Optional[Union[date, str]] = None,
-               end_date: Optional[Union[date, str]] = None,
                **kwargs) -> pd.DataFrame:
         """
         Get time series data for futures symbols.
@@ -39,8 +38,8 @@ class FuturesDataSource(ABC):
                      - Root symbols: 'BRN', 'CL' (typically front month)
             fields: Specific fields to retrieve (e.g., ['close', 'volume'])
                     If None, return all available fields
-            start_date: Start of date range (inclusive)
-            end_date: End of date range (inclusive)
+            start_date: Start of date range (inclusive). Data goes up to 
+                        the most recent available point.
             **kwargs: Additional implementation-specific parameters
             
         Returns:

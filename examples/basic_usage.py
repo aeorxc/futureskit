@@ -39,23 +39,19 @@ class DemoDataSource(FuturesDataSource):
                symbols: Union[str, List[str]], 
                fields: Optional[List[str]] = None,
                start_date: Optional[Union[date, str]] = None,
-               end_date: Optional[Union[date, str]] = None,
                **kwargs) -> pd.DataFrame:
         """Get time series data for symbols."""
         if isinstance(symbols, str):
             symbols = [symbols]
         
         # Default date range
-        if end_date is None:
-            end_date = date.today()
+        end_date = date.today()
         if start_date is None:
             start_date = end_date - timedelta(days=30)
         
         # Convert string dates
         if isinstance(start_date, str):
             start_date = pd.to_datetime(start_date).date()
-        if isinstance(end_date, str):
-            end_date = pd.to_datetime(end_date).date()
         
         # Default fields
         if fields is None:
@@ -307,8 +303,7 @@ def example_4_data_access():
     df = datasource.series(
         symbols=['BRN_2026F', 'CL_2026H'],
         fields=['close', 'volume'],
-        start_date='2024-01-01',
-        end_date='2024-01-10'
+        start_date='2024-01-01'
     )
     print("Time Series Data:")
     print(df.head())
