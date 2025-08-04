@@ -8,6 +8,7 @@ from futureskit.notation import FuturesNotation, ParsedSymbol, MONTH_CODES, MONT
 from futureskit.symbology import SymbologyConverter
 from futureskit.contracts import FuturesContract, ContractChain
 from futureskit.futures import Future, ContinuousFuture, RollRule, RollDate
+from futureskit.datasources import FuturesDataSource
 from futureskit.exceptions import (
     FuturesKitError,
     InvalidSymbolError,
@@ -32,6 +33,8 @@ __all__ = [
     # Continuous futures
     "RollRule", 
     "RollDate",
+    # Data sources
+    "FuturesDataSource",
     # Exceptions
     "FuturesKitError",
     "InvalidSymbolError",
