@@ -85,7 +85,10 @@ class Future:
         return ContinuousFuture(self, **kwargs)
 
     def __repr__(self):
-        return f"Future({self.root_symbol!r}, contracts={len(self.chain)})"
+        if self._chain is None:
+            return f"Future({self.root_symbol!r}, contracts=unloaded)"
+        else:
+            return f"Future({self.root_symbol!r}, contracts={len(self._chain)})"
 
 
 class ContinuousFuture:

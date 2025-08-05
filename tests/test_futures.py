@@ -200,7 +200,7 @@ class TestFuture:
         datasource = MockDataSourceFull()
         future = Future('CL', datasource=datasource)
         
-        assert repr(future) == "Future('CL', contracts=6)"
+        assert repr(future) == "Future('CL', contracts=unloaded)"
 
 
 # ==================== ContinuousFuture Tests ====================
