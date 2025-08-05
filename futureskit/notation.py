@@ -107,11 +107,12 @@ class FuturesNotation:
     
     # Regular futures patterns
     PATTERNS = [
-        # Canonical format: BRN_2026F
-        re.compile(r'^([A-Z]+)_(\d{4})([FGHJKMNQUVXZ])$'),
+        # Canonical format: BRN_2026F or OIL_DATED_2026F
+        # Capture everything before _YYYYM as root
+        re.compile(r'^(.+)_(\d{4})([FGHJKMNQUVXZ])$'),
         
         # Invalid canonical format (for error reporting): BRN_2026A
-        re.compile(r'^([A-Z]+)_(\d{4})([A-Z])$'),
+        re.compile(r'^(.+)_(\d{4})([A-Z])$'),
         
         # Short year format: BRN26F or BRNF26
         re.compile(r'^([A-Z]+)(\d{2})([FGHJKMNQUVXZ])$'),
@@ -122,8 +123,8 @@ class FuturesNotation:
         re.compile(r'^([A-Z]+)[-\s](\d{4})([FGHJKMNQUVXZ])$'),
     ]
     
-    # Continuous contract pattern: BRN.n.1
-    CONTINUOUS_PATTERN = re.compile(r'^([A-Z]+)\.([a-zA-Z]+)\.(\d+)$')
+    # Continuous contract pattern: BRN.n.1 or OIL_BRENT.n.1
+    CONTINUOUS_PATTERN = re.compile(r'^(.+)\.([a-zA-Z]+)\.(\d+)$')
     
     def parse(self, symbol: str) -> ParsedSymbol:
         """
