@@ -11,7 +11,8 @@ extends:
     packageName: 'futureskit'
     createRefinitivConfig: false
 
-pool: Self-Hosted-AWS
+pool:
+  vmImage: 'ubuntu-latest'
 
 trigger:
   branches:
