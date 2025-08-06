@@ -5,7 +5,7 @@ This module provides the top-level Future class, which acts as a factory
 for specific FuturesContract and ContinuousFuture objects.
 """
 
-from typing import Optional, Any, List, Union, Tuple
+from typing import Optional, Any, List, Union, Tuple, Dict
 from datetime import date, timedelta
 from dataclasses import dataclass
 from enum import Enum
@@ -43,12 +43,28 @@ class Future:
     Represents a futures product line (e.g., 'CL' for WTI Crude).
     Acts as a factory for specific contracts and continuous series.
     """
-    def __init__(self, root_symbol: str, datasource: Any, exchange: Optional[str] = None):
+    def __init__(self, root_symbol: str, datasource: Any, exchange: Optional[str] = None, 
+                 metadata: Optional[Dict[str, Any]] = None):
         self.root_symbol = root_symbol
         self.datasource = datasource
         self.exchange = exchange
+        self.metadata = metadata or {}  # Store metadata
         self._chain = None  # Lazy loading
         self._notation = FuturesNotation()
+    
+    @property
+    def unit(self) -> Optional[str]:
+        """Get unit from metadata (e.g., 'bbl', 'mt', 'gal')"""
+        return self.metadata.get('unit')
+    
+    @property
+    def currency(self) -> Optional[str]:
+        """Get currency from metadata (e.g., 'USD', 'EUR')"""
+        return self.metadata.get('currency')
+    
+    def get_metadata(self, key: str, default: Any = None) -> Any:
+        """Safe metadata access with default value"""
+        return self.metadata.get(key, default)
     
     @property
     def chain(self) -> ContractChain:
