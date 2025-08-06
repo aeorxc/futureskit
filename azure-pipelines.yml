@@ -1,3 +1,19 @@
+resources:
+  repositories:
+    - repository: pipeline-templates
+      type: git
+      name: Oil/pipeline-templates
+      ref: refs/heads/main
+
+extends:
+  template: templates/python-packages-pipeline.yml@pipeline-templates
+  parameters:
+    packageName: 'futureskit'
+    createRefinitivConfig: false
+
+pool:
+  vmImage: 'ubuntu-latest'
+
 trigger:
   branches:
     include:
@@ -5,63 +21,3 @@ trigger:
   tags:
     include:
       - "*"
-
-pool:
-  vmImage: 'ubuntu-latest'
-
-variables:
-  pythonVersion: '3.10'
-
-stages:
-- stage: Build
-  displayName: 'Build and Test'
-  jobs:
-  - job: BuildPackage
-    displayName: 'Build Python Package'
-    steps:
-    - task: UsePythonVersion@0
-      inputs:
-        versionSpec: '$(pythonVersion)'
-      displayName: 'Use Python $(pythonVersion)'
-
-    - script: |
-        python -m pip install --upgrade pip
-        python -m pip install -r requirements.txt
-        python -m pip install -r requirements-dev.txt
-        python -m pip install -r requirements-test.txt
-      displayName: 'Install dependencies'
-
-    - script: |
-        python -m pip install build wheel
-        python -m build
-      displayName: 'Build package'
-
-    - script: |
-        python -m pytest tests/ -v --cov=futureskit --cov-report=html --cov-report=xml
-      displayName: 'Run tests'
-      continueOnError: true
-
-    - task: PublishTestResults@2
-      inputs:
-        testResultsFiles: '**/test-*.xml'
-        testRunTitle: 'Python $(pythonVersion)'
-      condition: succeededOrFailed()
-
-    - task: PublishCodeCoverageResults@1
-      inputs:
-        codeCoverageTool: Cobertura
-        summaryFileLocation: '$(System.DefaultWorkingDirectory)/**/coverage.xml'
-      condition: succeededOrFailed()
-
-    - task: PublishPipelineArtifact@1
-      inputs:
-        targetPath: 'dist'
-        artifact: 'futureskit-package'
-        publishLocation: 'pipeline'
-      displayName: 'Publish package artifacts'
-
-    - script: |
-        ls -la dist/
-        echo "Built packages:"
-        ls dist/*.whl dist/*.tar.gz
-      displayName: 'List built artifacts'
