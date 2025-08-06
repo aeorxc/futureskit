@@ -21,3 +21,35 @@ trigger:
   tags:
     include:
       - "*"
+
+variables:
+  pythonVersion: '3.10'
+
+jobs:
+- job: BuildAndPublish
+  displayName: 'Build and Publish Package'
+  steps:
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '$(pythonVersion)'
+    displayName: 'Use Python $(pythonVersion)'
+
+  - script: |
+      python -m pip install --upgrade pip
+      python -m pip install build wheel
+    displayName: 'Install build tools'
+
+  - script: |
+      python -m build
+    displayName: 'Build package'
+
+  - task: PublishPipelineArtifact@1
+    inputs:
+      targetPath: 'dist'
+      artifact: 'futureskit-package'
+      publishLocation: 'pipeline'
+    displayName: 'Publish package artifacts'
+
+  - script: |
+      ls -la dist/
+    displayName: 'List built artifacts'
