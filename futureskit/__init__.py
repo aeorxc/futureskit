@@ -7,7 +7,14 @@ __version__ = "0.1.0"
 from futureskit.notation import FuturesNotation, ParsedSymbol, MONTH_CODES, MONTH_TO_CODE
 from futureskit.symbology import SymbologyConverter
 from futureskit.contracts import FuturesContract, ContractChain
-from futureskit.futures import Future, ContinuousFuture, RollRule, RollDate
+from futureskit.futures import Future, ContinuousFuture
+from futureskit.continuous import (
+    RollRule,
+    RollDate,
+    RollSchedule,
+    AdjustmentMethod,
+    ContinuousFutureBuilder
+)
 from futureskit.datasources import FuturesDataSource
 from futureskit.exceptions import (
     FuturesKitError,
@@ -33,6 +40,9 @@ __all__ = [
     # Continuous futures
     "RollRule", 
     "RollDate",
+    "RollSchedule",
+    "AdjustmentMethod",
+    "ContinuousFutureBuilder",
     # Data sources
     "FuturesDataSource",
     # Exceptions

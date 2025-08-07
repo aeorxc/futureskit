@@ -14,27 +14,15 @@ import logging
 
 from futureskit.notation import FuturesNotation
 from futureskit.contracts import FuturesContract, ContractChain
+from futureskit.continuous import (
+    ContinuousFutureBuilder,
+    RollRule,
+    AdjustmentMethod,
+    RollDate,
+    RollSchedule
+)
 
 logger = logging.getLogger(__name__)
-
-
-# --- Enums and Dataclasses (previously in continuous.py) ---
-
-class RollRule(Enum):
-    """Roll rules for continuous futures"""
-    FIRST_NOTICE = 'f'
-    LAST_TRADING = 'l'
-    VOLUME = 'v'
-    OPEN_INTEREST = 'o'
-    CALENDAR = 'c'
-
-@dataclass
-class RollDate:
-    """Represents a single roll date event in a continuous series."""
-    from_contract: FuturesContract
-    to_contract: FuturesContract
-    roll_date: date
-    rule: RollRule
 
 # --- Main Classes ---
 
@@ -51,6 +39,38 @@ class Future:
         self.metadata = metadata or {}  # Store metadata
         self._chain = None  # Lazy loading
         self._notation = FuturesNotation()
+    
+    @classmethod
+    def from_notation(cls, notation: str, datasource: Any, exchange: Optional[str] = None) -> Union['Future', 'ContinuousFuture']:
+        """
+        Create a Future or ContinuousFuture from notation string.
+        
+        Args:
+            notation: Full notation string (e.g., 'BRN_2026F' or 'BRN.n.1')
+            datasource: Data source for loading contract data
+            exchange: Optional exchange identifier
+            
+        Returns:
+            Future object for regular notation, ContinuousFuture for continuous notation
+        
+        Examples:
+            # Regular contract
+            future = Future.from_notation('BRN_2026F', datasource)
+            
+            # Continuous series
+            continuous = Future.from_notation('BRN.n.1', datasource)
+        """
+        parser = FuturesNotation()
+        parsed = parser.parse(notation)
+        
+        if parsed.is_continuous:
+            # Create Future first, then continuous
+            future = cls(parsed.root, datasource, exchange)
+            continuous_notation = f"{parsed.roll_rule}.{parsed.contract_index}"
+            return future.continuous(continuous_notation)
+        else:
+            # Regular Future
+            return cls(parsed.root, datasource, exchange)
     
     @property
     def unit(self) -> Optional[str]:
@@ -96,9 +116,62 @@ class Future:
             return self.contract(parsed.year, parsed.month)
         return None
 
-    def continuous(self, **kwargs) -> 'ContinuousFuture':
-        """Create a continuous futures series for this commodity."""
+    def continuous(self, notation: Optional[str] = None, **kwargs) -> 'ContinuousFuture':
+        """
+        Create a continuous futures series for this commodity.
+        
+        Args:
+            notation: Optional continuous notation string (e.g., 'n.1' for front month by OI)
+                     If provided, overrides kwargs
+            **kwargs: Parameters for ContinuousFuture if notation not provided
+        
+        Returns:
+            ContinuousFuture object configured according to notation or kwargs
+        """
+        if notation:
+            # Parse continuous notation like "n.1" or "c.2"
+            parsed = self._parse_continuous_notation(notation)
+            return ContinuousFuture(self, **parsed)
         return ContinuousFuture(self, **kwargs)
+    
+    def _parse_continuous_notation(self, notation: str) -> dict:
+        """
+        Parse continuous notation into ContinuousFuture parameters.
+        
+        Notation format: {roll_rule}.{depth}
+        Examples:
+            'n.1' - Front month by open interest
+            'v.2' - Second month by volume
+            'c.1' - Front month by calendar
+        """
+        parts = notation.split('.')
+        if len(parts) != 2:
+            raise ValueError(f"Invalid continuous notation: {notation}. Expected format: 'rule.depth'")
+        
+        roll_rule = parts[0].lower()
+        try:
+            depth = int(parts[1]) - 1  # Convert from 1-based to 0-based
+        except ValueError:
+            raise ValueError(f"Invalid depth in notation: {parts[1]}. Must be an integer.")
+        
+        # Map notation roll rules to our RollRule values
+        rule_mapping = {
+            'n': 'oi',        # Open interest
+            'v': 'volume',    # Volume
+            'c': 'calendar',  # Calendar
+            'fn': 'calendar', # First notice (use calendar for now)
+            'lt': 'calendar', # Last trade (use calendar for now)
+        }
+        
+        if roll_rule not in rule_mapping:
+            raise ValueError(f"Invalid roll rule: {roll_rule}. Valid rules: {list(rule_mapping.keys())}")
+        
+        return {
+            'roll': rule_mapping[roll_rule],
+            'depth': depth,
+            'offset': -5 if roll_rule == 'c' else 0,  # Default offset for calendar rolls
+            'adjust': 'back'  # Default to back-adjustment
+        }
 
     def __repr__(self):
         if self._chain is None:
@@ -110,73 +183,139 @@ class Future:
 class ContinuousFuture:
     """
     Represents and evaluates a continuous futures series.
-    This class now incorporates the logic from the old ContinuousFutures
-    and ContinuousBuilder classes.
+    
+    This class provides a high-level interface to the ContinuousFutureBuilder,
+    making it easy to create and work with continuous futures series.
     """
     def __init__(self, 
                  future: Future,
                  roll: Union[str, RollRule] = 'calendar',
                  offset: int = -5,
-                 adjust: str = 'back',
+                 adjust: Union[str, AdjustmentMethod] = 'back',
                  depth: int = 0):
+        """
+        Initialize a continuous future.
+        
+        Args:
+            future: The underlying Future object
+            roll: Roll rule (calendar, volume, oi, etc.)
+            offset: Days offset from roll rule (negative = roll earlier)
+            adjust: Adjustment method (none, back, forward, proportional)
+            depth: Contract depth (0=front month, 1=second month, etc.)
+        """
         self.future = future
         self.root = future.root_symbol
-        self.depth = depth + 1  # 1-based
+        self.depth = depth + 1  # Convert to 1-based for compatibility
         self.offset = offset
-        self.adjust = adjust
         
-        if isinstance(roll, RollRule):
-            self.roll_rule = roll
+        # Convert string inputs to enums
+        if isinstance(roll, str):
+            self.roll_rule = RollRule.from_string(roll)
         else:
-            roll_map = {'volume': RollRule.VOLUME, 'v': RollRule.VOLUME,
-                        'open_interest': RollRule.OPEN_INTEREST, 'oi': RollRule.OPEN_INTEREST, 'o': RollRule.OPEN_INTEREST,
-                        'calendar': RollRule.CALENDAR, 'c': RollRule.CALENDAR,
-                        'first_notice': RollRule.FIRST_NOTICE, 'f': RollRule.FIRST_NOTICE,
-                        'last_trading': RollRule.LAST_TRADING, 'l': RollRule.LAST_TRADING}
-            self.roll_rule = roll_map.get(roll.lower(), RollRule.CALENDAR)
+            self.roll_rule = roll
             
-        self._series: Optional[pd.DataFrame] = None
-        self.roll_schedule: List[RollDate] = []
+        if isinstance(adjust, str):
+            self.adjust = AdjustmentMethod(adjust)
+        else:
+            self.adjust = adjust
+        
+        # Internal state
+        self._builder: Optional[ContinuousFutureBuilder] = None
+        self._series: Optional[pd.Series] = None
+        self._roll_schedule: Optional[RollSchedule] = None
 
-    def evaluate(self, start_date: Optional[date] = None, end_date: Optional[date] = None) -> pd.DataFrame:
-        """Builds and returns the continuous series DataFrame."""
-        if end_date is None: end_date = date.today()
-        if start_date is None: start_date = end_date.replace(year=end_date.year - 5)
+    @property
+    def builder(self) -> ContinuousFutureBuilder:
+        """Lazy initialization of the builder."""
+        if self._builder is None:
+            # Get contracts from the future's chain
+            contracts = list(self.future.chain)
+            
+            self._builder = ContinuousFutureBuilder(
+                contracts=contracts,
+                roll_rule=self.roll_rule,
+                offset=self.offset,
+                depth=self.depth,
+                adjustment=self.adjust
+            )
+        return self._builder
+
+    def evaluate(
+        self,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+        field: str = 'settlement'
+    ) -> pd.DataFrame:
+        """
+        Build and return the continuous series.
+        
+        Args:
+            start_date: Start of the series (defaults to 5 years ago)
+            end_date: End of the series (defaults to today)
+            field: Price field to use (settlement, close, etc.)
+            
+        Returns:
+            DataFrame with the continuous series
+        """
+        if end_date is None:
+            end_date = date.today()
+        if start_date is None:
+            start_date = end_date.replace(year=end_date.year - 5)
 
         logger.info(f"Building continuous series for {self.root} from {start_date} to {end_date}")
         
-        self._generate_roll_schedule(start_date, end_date)
-        segments = self._build_series_segments(start_date, end_date)
+        # Build the series using the builder
+        series = self.builder.build_series(
+            field=field,
+            start_date=start_date,
+            end_date=end_date
+        )
         
-        # Placeholder for stitching and adjusting data
-        if segments:
-            # In a full implementation, you would fetch data for each segment,
-            # stitch it, and apply adjustments.
-            # For now, we return the data of the last contract in the first segment.
-            last_contract = segments[0][2]
-            if last_contract._price_data is not None:
-                return last_contract._price_data
-
-        logger.warning("Could not build continuous series.")
-        return pd.DataFrame()
-
-    def _generate_roll_schedule(self, start_date: date, end_date: date):
-        """Generates the list of roll dates based on the rule."""
-        # This logic is moved from the old ContinuousFutures class
-        # (Implementation is a placeholder for now)
-        self.roll_schedule = []
-        logger.debug("Roll schedule generation is a placeholder.")
-
-    def _build_series_segments(self, start_date: date, end_date: date) -> List[Tuple[date, date, FuturesContract]]:
-        """Builds the segments based on the roll schedule."""
-        # This logic is moved from the old ContinuousBuilder
-        if not self.roll_schedule:
-            active_contract = self.future.chain.get_nth_contract(self.depth, as_of=start_date)
-            if active_contract:
-                return [(start_date, end_date, active_contract)]
-            return []
-        # (Full segment building logic would go here)
-        return []
+        # Store for future reference
+        self._series = series
+        
+        # Convert to DataFrame for compatibility
+        if isinstance(series, pd.Series):
+            df = series.to_frame(name=f"{self.root}_M{self.depth}")
+        else:
+            df = pd.DataFrame(series)
+        
+        return df
+    
+    def get_roll_schedule(
+        self,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None
+    ) -> RollSchedule:
+        """
+        Get the roll schedule for the continuous series.
+        
+        Args:
+            start_date: Start of the schedule
+            end_date: End of the schedule
+            
+        Returns:
+            RollSchedule object with all roll dates
+        """
+        if self._roll_schedule is None:
+            self._roll_schedule = self.builder.build_roll_schedule(
+                start_date=start_date,
+                end_date=end_date
+            )
+        return self._roll_schedule
+    
+    def get_active_contract(self, as_of_date: date) -> Optional[FuturesContract]:
+        """
+        Get the active contract for a given date.
+        
+        Args:
+            as_of_date: The date to check
+            
+        Returns:
+            The active FuturesContract on that date
+        """
+        schedule = self.get_roll_schedule()
+        return schedule.get_active_contract(as_of_date)
 
     def __repr__(self):
-        return f"ContinuousFuture({self.root!r}, roll='{self.roll_rule.value}', depth={self.depth-1})"
+        return f"ContinuousFuture({self.root!r}, roll='{self.roll_rule.value}', depth={self.depth-1}, adjust='{self.adjust.value}')"
