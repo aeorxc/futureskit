@@ -32,11 +32,13 @@ class Future:
     Acts as a factory for specific contracts and continuous series.
     """
     def __init__(self, root_symbol: str, datasource: Any, exchange: Optional[str] = None, 
-                 metadata: Optional[Dict[str, Any]] = None):
+                 metadata: Optional[Dict[str, Any]] = None,
+                 vendor_map: Optional[Dict[str, str]] = None):
         self.root_symbol = root_symbol
         self.datasource = datasource
         self.exchange = exchange
         self.metadata = metadata or {}  # Store metadata
+        self.vendor_map = vendor_map or {}  # Store vendor-specific symbol mappings
         self._chain = None  # Lazy loading
         self._notation = FuturesNotation()
     
@@ -97,10 +99,12 @@ class Future:
         """Loads the contract chain from the datasource."""
         if hasattr(self.datasource, 'get_contract_chain'):
             contracts = self.datasource.get_contract_chain(self.root_symbol)
-            # Set exchange if not already set
+            # Set exchange and future reference if not already set
             for contract in contracts:
                 if contract.exchange is None:
                     contract.exchange = self.exchange
+                if contract.future is None:
+                    contract.future = self  # Set reference to parent Future
             return ContractChain(self.root_symbol, contracts, self.exchange)
         logger.warning("Datasource has no 'get_contract_chain' method. Using empty chain.")
         return ContractChain(self.root_symbol, [], self.exchange)
@@ -316,6 +320,36 @@ class ContinuousFuture:
         """
         schedule = self.get_roll_schedule()
         return schedule.get_active_contract(as_of_date)
+    
+    @property
+    def formats(self):
+        """
+        Returns a namespace with vendor format methods for this continuous series.
+        
+        Examples:
+            continuous.formats.tradingview()  # "ICEEUR:BRN1!" for front month
+            continuous.formats.refinitiv()    # "LCOc1"
+        """
+        from futureskit.symbology import SymbologyConverter
+        from functools import partial
+        
+        # Create a namespace object with bound methods
+        class Formats:
+            pass
+        
+        formats = Formats()
+        
+        # Bind each method with the continuous series depth
+        # Note: future.vendor_map is accessed through self.future
+        vendor_map = self.future.vendor_map if hasattr(self.future, 'vendor_map') else {}
+        
+        formats.tradingview = partial(SymbologyConverter.tradingview, self.future.root_symbol, vendor_map, continuous_index=self.depth)
+        formats.refinitiv = partial(SymbologyConverter.refinitiv, self.future.root_symbol, vendor_map, continuous_index=self.depth)
+        formats.marketplace = partial(SymbologyConverter.marketplace, self.future.root_symbol, vendor_map, continuous_index=self.depth)
+        formats.cme = partial(SymbologyConverter.cme, self.future.root_symbol, vendor_map, continuous_index=self.depth)
+        formats.bloomberg = partial(SymbologyConverter.bloomberg, self.future.root_symbol, vendor_map, continuous_index=self.depth)
+        
+        return formats
 
     def __repr__(self):
         return f"ContinuousFuture({self.root!r}, roll='{self.roll_rule.value}', depth={self.depth-1}, adjust='{self.adjust.value}')"

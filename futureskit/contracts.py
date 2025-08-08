@@ -31,6 +31,7 @@ class FuturesContract:
     exchange: Optional[str] = None
     feed: Optional[str] = None
     datasource: Optional[Any] = None
+    future: Optional[Any] = None  # Reference to parent Future object
 
     # Internal state
     _metadata: Dict[str, Any] = field(default_factory=dict, init=False, repr=False)
@@ -91,6 +92,36 @@ class FuturesContract:
 
     def __str__(self) -> str:
         return self.to_canonical()
+
+    @property
+    def formats(self):
+        """
+        Returns a namespace with vendor format methods for this specific contract.
+        
+        Examples:
+            contract.formats.tradingview()  # "ICEEUR:BRNH25"
+            contract.formats.refinitiv()    # "LCOH5"
+        """
+        from futureskit.symbology import SymbologyConverter
+        from functools import partial
+        
+        # Get vendor_map from parent Future object if available
+        vendor_map = self.future.vendor_map if self.future and hasattr(self.future, 'vendor_map') else {}
+        
+        # Create a namespace object with bound methods
+        class Formats:
+            pass
+        
+        formats = Formats()
+        
+        # Bind each method with the contract's specific year/month
+        formats.tradingview = partial(SymbologyConverter.tradingview, self.root_symbol, vendor_map, self.year, self.month_code)
+        formats.refinitiv = partial(SymbologyConverter.refinitiv, self.root_symbol, vendor_map, self.year, self.month_code)
+        formats.marketplace = partial(SymbologyConverter.marketplace, self.root_symbol, vendor_map, self.year, self.month_code)
+        formats.cme = partial(SymbologyConverter.cme, self.root_symbol, vendor_map, self.year, self.month_code)
+        formats.bloomberg = partial(SymbologyConverter.bloomberg, self.root_symbol, vendor_map, self.year, self.month_code)
+        
+        return formats
 
     def __repr__(self) -> str:
         return f"FuturesContract({self.root_symbol!r}, {self.year}, {self.month_code!r})"

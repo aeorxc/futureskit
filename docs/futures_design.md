@@ -15,6 +15,7 @@ The library implements a flexible, data-provider-agnostic model for futures:
 - Dynamic attribute access for price series and metadata
 - Supports any fields provided by data sources
 - Methods: `to_canonical()`, `to_short_year()`, comparison operators
+- **Has `formats` property** for vendor-specific formatting (e.g., `contract.formats.tradingview()`)
 
 #### 2. ContractChain
 - Collection of futures contracts for a single commodity
@@ -26,11 +27,14 @@ The library implements a flexible, data-provider-agnostic model for futures:
 - Creates FuturesContract objects with data from providers
 - Provides shorthand access: `wti['H26']` returns March 2026 contract
 - Can create ContinuousFuture objects
+- **Stores `vendor_map`** for platform-specific symbol mappings (single source of truth)
+- FuturesContract and ContinuousFuture access vendor_map through Future reference
 
 #### 4. ContinuousFuture
 - Represents a continuous futures series
 - Configurable roll rules and adjustments
 - Currently has placeholder implementation for evaluation
+- **Has `formats` property** for vendor-specific formatting (e.g., `continuous.formats.tradingview()`)
 
 ### Notation Parsing
 
@@ -53,7 +57,13 @@ The `SymbologyConverter` class converts between vendor formats:
 - CME: `@BRN26F`
 - ICE: `BRN26F`
 - Bloomberg: `COF6 Comdty`
+- TradingView: `ICEEUR:BRNH25` (with exchange feed)
+- Refinitiv: `LCOH5` (RIC format)
 - Marketplace continuous: `BRN_001_MONTH`
+
+**Two levels of API**:
+- Low-level: `to_tradingview_format(parsed, vendor_map)` - takes ParsedSymbol
+- High-level: `tradingview(root, vendor_map, year, month)` - builds ParsedSymbol internally
 
 ## Key Design Features
 
@@ -74,6 +84,23 @@ The same contract object works with different data providers:
 
 ### 3. Lazy Loading
 Data is only loaded when a datasource is provided, keeping objects lightweight.
+
+### 4. Vendor Mapping Support
+Vendor-specific symbol mappings flow through object relationships:
+```python
+vendor_map = {
+    'tradingview_symbol': 'BRN',
+    'tradingview_feed': 'ICEEUR',
+    'refinitiv_symbol': 'LCO',
+    'marketplace_feed': 'ICE_EuroFutures'
+}
+
+future = Future('BRN', datasource, vendor_map=vendor_map)
+contract = future.contract(2025, 'H')
+
+# Contract accesses vendor_map through its Future reference
+contract.formats.tradingview()  # Returns "ICEEUR:BRNH25"
+```
 
 ## Architecture Decisions
 
@@ -116,6 +143,28 @@ Unlike the proposed design, the current implementation doesn't use an abstract b
 - Spread contracts
 - Options on futures support
 - Seasonal patterns analysis
+
+## Usage Examples
+
+### Vendor Format Conversion
+```python
+# Create futures with vendor mappings
+future = Future('BRN', datasource, vendor_map={
+    'tradingview_symbol': 'BRN',
+    'tradingview_feed': 'ICEEUR',
+    'refinitiv_symbol': 'LCO'
+})
+
+# Get specific contract
+contract = future.contract(2025, 'H')
+contract.formats.tradingview()  # "ICEEUR:BRNH25"
+contract.formats.refinitiv()    # "LCOH5"
+
+# Get continuous series
+continuous = future.continuous('v.1')  # Front month by volume
+continuous.formats.tradingview()  # "ICEEUR:BRN1!"
+continuous.formats.refinitiv()    # "LCOc1"
+```
 
 ## Migration from String-Based Systems
 
