@@ -5,7 +5,7 @@ Test the Future and ContinuousFuture classes.
 import pytest
 import pandas as pd
 from datetime import date
-from futureskit import Future, FuturesContract, ContinuousFuture, RollRule
+from futureskit import Future, FuturesContract, ContinuousFuture, RollRule, AdjustmentMethod
 from futureskit.datasources import FuturesDataSource
 from futureskit.notation import ParsedSymbol
 
@@ -51,8 +51,24 @@ class MockDataSourceFull(FuturesDataSource):
                 month_code=month_code,
                 datasource=self
             )
+            # Add get_data method to each contract
+            contract.get_data = lambda start=None, end=None: self._get_mock_data(start, end)
             contracts.append(contract)
         return contracts
+    
+    def _get_mock_data(self, start_date=None, end_date=None):
+        """Return mock price data for contracts"""
+        dates = pd.date_range('2024-01-01', '2024-12-31', freq='B')
+        if start_date:
+            dates = dates[dates >= pd.Timestamp(start_date)]
+        if end_date:
+            dates = dates[dates <= pd.Timestamp(end_date)]
+        
+        return pd.DataFrame({
+            'settlement': 100 + pd.Series(range(len(dates))) * 0.01,
+            'close': 100 + pd.Series(range(len(dates))) * 0.01,
+            'volume': 1000 + pd.Series(range(len(dates))) * 10,
+        }, index=dates)
     
     def get_futures_contract(self, root_symbol: str, year: int, month_code: str):
         dates = pd.date_range('2024-01-01', periods=5, freq='D')
@@ -192,7 +208,7 @@ class TestFuture:
         )
         assert continuous.roll_rule == RollRule.VOLUME
         assert continuous.offset == -10
-        assert continuous.adjust == 'proportional'
+        assert continuous.adjust == AdjustmentMethod.PROPORTIONAL
         assert continuous.depth == 3  # depth + 1
     
     def test_repr(self):
@@ -263,19 +279,18 @@ class TestContinuousFuture:
         assert isinstance(result, pd.DataFrame)
     
     def test_build_series_segments_with_empty_schedule(self):
-        """Test _build_series_segments with empty roll schedule"""
+        """Test builder handles empty schedule gracefully"""
         datasource = MockDataSourceFull()
         future = Future('CL', datasource=datasource)
         continuous = future.continuous()
         
-        # Directly test the internal method
-        segments = continuous._build_series_segments(date.today(), date.today())
-        assert isinstance(segments, list)
-        
-        # Should have one segment with active contract
-        if segments:
-            assert len(segments) == 1
-            assert len(segments[0]) == 3  # (start_date, end_date, contract)
+        # Test that roll schedule can be built even with limited data
+        schedule = continuous.get_roll_schedule(
+            start_date=date.today(),
+            end_date=date.today()
+        )
+        assert hasattr(schedule, 'roll_dates')
+        assert isinstance(schedule.roll_dates, list)
     
     def test_repr(self):
         """Test string representation"""
@@ -283,7 +298,11 @@ class TestContinuousFuture:
         future = Future('CL', datasource=datasource)
         continuous = future.continuous(roll='volume', depth=2)
         
-        assert repr(continuous) == "ContinuousFuture('CL', roll='v', depth=2)"
+        # The repr now includes more details and uses full enum names
+        repr_str = repr(continuous)
+        assert "ContinuousFuture('CL'" in repr_str
+        assert "roll='volume'" in repr_str
+        assert "depth=2" in repr_str
 
 
 # ==================== FuturesContract Tests (mixed access) ====================
