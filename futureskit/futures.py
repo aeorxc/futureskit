@@ -177,6 +177,56 @@ class Future:
             'adjust': 'back'  # Default to back-adjustment
         }
 
+    def get_urls(self) -> Dict[str, str]:
+        """
+        Get URLs for this future (defaults to front month continuous).
+        Includes exchange URL if available in metadata.
+        
+        Returns:
+            Dictionary of service names to URLs
+        """
+        urls = {}
+        
+        # Get exchange URL from metadata if available
+        exchange_url = self.metadata.get('exchange_url')
+        if exchange_url:
+            urls['exchange'] = exchange_url
+        
+        # Get vendor URLs from datasource (defaults to front month continuous)
+        continuous = self.continuous('n.1')
+        datasource_urls = continuous.get_urls()
+        
+        # Merge both URL sets
+        urls.update(datasource_urls)
+        
+        return urls
+    
+    def to_dict(self, include_urls: bool = False) -> Dict[str, Any]:
+        """
+        Convert future to dictionary representation.
+        
+        Args:
+            include_urls: Whether to include URLs in the output
+            
+        Returns:
+            Dictionary with future data
+        """
+        data = {
+            'root_symbol': self.root_symbol,
+            'exchange': self.exchange,
+            'vendor_symbols': self.vendor_map,
+        }
+        
+        # Add metadata if available
+        if self.metadata:
+            data['metadata'] = self.metadata
+            
+        # Add URLs if requested
+        if include_urls:
+            data['urls'] = self.get_urls()
+            
+        return data
+    
     def __repr__(self):
         if self._chain is None:
             return f"Future({self.root_symbol!r}, contracts=unloaded)"
@@ -350,6 +400,46 @@ class ContinuousFuture:
         formats.bloomberg = partial(SymbologyConverter.bloomberg, self.future.root_symbol, vendor_map, continuous_index=self.depth)
         
         return formats
+
+    def get_urls(self) -> Dict[str, str]:
+        """
+        Get URLs for this continuous future from the datasource.
+        
+        Returns:
+            Dictionary of service names to URLs
+        """
+        if not self.future.datasource or not hasattr(self.future.datasource, 'get_continuous_url'):
+            return {}
+        
+        # Get vendor_map from parent Future object
+        vendor_map = self.future.vendor_map if hasattr(self.future, 'vendor_map') else {}
+        
+        # Delegate to datasource - it handles all vendor-specific logic internally
+        return self.future.datasource.get_continuous_url(self.future.root_symbol, self.depth, vendor_map)
+    
+    def to_dict(self, include_urls: bool = False) -> Dict[str, Any]:
+        """
+        Convert continuous future to dictionary representation.
+        
+        Args:
+            include_urls: Whether to include URLs in the output
+            
+        Returns:
+            Dictionary with continuous future data
+        """
+        data = {
+            'root_symbol': self.future.root_symbol,
+            'depth': self.depth - 1,  # 0-based in output
+            'roll_rule': self.roll_rule.value,
+            'offset': self.offset,
+            'adjustment': self.adjust.value,
+        }
+        
+        # Add URLs if requested
+        if include_urls:
+            data['urls'] = self.get_urls()
+            
+        return data
 
     def __repr__(self):
         return f"ContinuousFuture({self.root!r}, roll='{self.roll_rule.value}', depth={self.depth-1}, adjust='{self.adjust.value}')"

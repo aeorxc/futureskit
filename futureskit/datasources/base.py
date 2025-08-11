@@ -6,7 +6,7 @@ to work with FuturesKit objects.
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Optional, Union, TYPE_CHECKING
+from typing import Dict, List, Optional, Union, TYPE_CHECKING
 from datetime import date
 import pandas as pd
 
@@ -157,3 +157,53 @@ class FuturesDataSource(ABC):
             NotImplementedError: Must be implemented by subclasses
         """
         raise NotImplementedError
+    
+    # URL generation methods (optional - default implementation returns empty dict)
+    
+    def get_contract_url(self, root_symbol: str, year: int, month_code: str,
+                        vendor_map: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+        """
+        Optional: Generate URLs for a specific contract.
+        
+        Args:
+            root_symbol: The commodity root symbol (e.g., 'BRN')
+            year: Contract year (e.g., 2026)
+            month_code: Month code (e.g., 'H' for March)
+            vendor_map: Optional vendor-specific symbol mappings
+            
+        Returns:
+            Dict mapping service names to URLs (e.g., {'tradingview': 'https://...'})
+            
+        Note:
+            Default implementation returns empty dict.
+            Datasources can override to provide URL generation.
+        """
+        return {}
+    
+    def get_continuous_url(self, root_symbol: str, depth: int,
+                          vendor_map: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+        """
+        Optional: Generate URLs for continuous series.
+        
+        Args:
+            root_symbol: The commodity root symbol (e.g., 'BRN')
+            depth: Continuous depth (1=front month, 2=second month, etc.)
+            vendor_map: Optional vendor-specific symbol mappings
+            
+        Returns:
+            Dict mapping service names to URLs (e.g., {'tradingview': 'https://...'})
+            
+        Note:
+            Default implementation returns empty dict.
+            Datasources can override to provide URL generation.
+        """
+        return {}
+    
+    def supports_url_generation(self) -> bool:
+        """
+        Check if this datasource provides URL generation.
+        
+        Returns:
+            True if datasource overrides URL generation methods, False otherwise.
+        """
+        return False

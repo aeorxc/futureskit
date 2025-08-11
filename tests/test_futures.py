@@ -217,6 +217,36 @@ class TestFuture:
         future = Future('CL', datasource=datasource)
         
         assert repr(future) == "Future('CL', contracts=unloaded)"
+    
+    def test_get_urls(self):
+        """Test URL generation for Future."""
+        from futureskit.datasources import TradingViewDataSource
+        
+        tv = TradingViewDataSource()
+        future = Future('BRN', datasource=tv, vendor_map={
+            'tradingview_symbol': 'BRN',
+            'tradingview_feed': 'ICEEUR'
+        })
+        
+        # Should default to front month continuous
+        urls = future.get_urls()
+        assert 'tradingview' in urls
+        assert 'BRN1!' in urls['tradingview']
+    
+    def test_to_dict_with_vendor_map(self):
+        """Test to_dict includes vendor information."""
+        future = Future('BRN', datasource=None, vendor_map={
+            'tradingview_symbol': 'BRN',
+            'tradingview_feed': 'ICEEUR',
+            'refinitiv_symbol': 'LCO'
+        })
+        
+        data = future.to_dict()
+        assert 'root_symbol' in data
+        assert data['root_symbol'] == 'BRN'
+        assert 'vendor_symbols' in data
+        assert data['vendor_symbols']['tradingview_symbol'] == 'BRN'
+        assert data['vendor_symbols']['refinitiv_symbol'] == 'LCO'
 
 
 # ==================== ContinuousFuture Tests ====================
@@ -303,6 +333,35 @@ class TestContinuousFuture:
         assert "ContinuousFuture('CL'" in repr_str
         assert "roll='volume'" in repr_str
         assert "depth=2" in repr_str
+    
+    def test_get_urls(self):
+        """Test URL generation for ContinuousFuture."""
+        from futureskit.datasources import TradingViewDataSource
+        
+        tv = TradingViewDataSource()
+        future = Future('BRN', datasource=tv, vendor_map={
+            'tradingview_symbol': 'BRN',
+            'tradingview_feed': 'ICEEUR'
+        })
+        
+        continuous = future.continuous('n.2')  # Second month
+        urls = continuous.get_urls()
+        assert 'tradingview' in urls
+        assert 'BRN2!' in urls['tradingview']
+    
+    def test_to_dict(self):
+        """Test to_dict for ContinuousFuture."""
+        from futureskit.datasources import TradingViewDataSource
+        
+        tv = TradingViewDataSource()
+        future = Future('BRN', datasource=tv)
+        continuous = future.continuous('n.1')
+        
+        data = continuous.to_dict()
+        assert 'root_symbol' in data
+        assert data['root_symbol'] == 'BRN'
+        assert 'depth' in data
+        assert data['depth'] == 0  # 0-based in output
 
 
 # ==================== FuturesContract Tests (mixed access) ====================

@@ -167,3 +167,179 @@ class TestSymbologyConverter:
         }
         
         assert results == expected
+    
+    def test_to_tradingview_format(self):
+        """Test conversion to TradingView format."""
+        # Regular contract with feed
+        parsed = self.notation.parse("BRN_2026F")
+        vendor_map = {'tradingview_symbol': 'BRN', 'tradingview_feed': 'ICEEUR'}
+        result = self.converter.to_tradingview_format(parsed, vendor_map, include_feed=True)
+        assert result == "ICEEUR:BRNF26"
+        
+        # Without feed
+        result = self.converter.to_tradingview_format(parsed, vendor_map, include_feed=False)
+        assert result == "BRNF26"
+        
+        # Without vendor_map
+        result = self.converter.to_tradingview_format(parsed, {}, include_feed=True)
+        assert result == "BRNF26"
+        
+        # Continuous
+        parsed = self.notation.parse("BRN.n.1")
+        result = self.converter.to_tradingview_format(parsed, vendor_map, include_feed=True)
+        assert result == "ICEEUR:BRN1!"
+        
+        # Continuous without feed
+        result = self.converter.to_tradingview_format(parsed, vendor_map, include_feed=False)
+        assert result == "BRN1!"
+    
+    def test_to_refinitiv_format(self):
+        """Test conversion to Refinitiv format."""
+        # Regular contract with vendor mapping
+        parsed = self.notation.parse("BRN_2026F")
+        vendor_map = {'refinitiv_symbol': 'LCO'}
+        result = self.converter.to_refinitiv_format(parsed, vendor_map)
+        assert result == "LCOF6"
+        
+        # Without vendor_map - should use root symbol
+        result = self.converter.to_refinitiv_format(parsed, {})
+        assert result == "BRNF6"
+        
+        # Continuous
+        parsed = self.notation.parse("BRN.n.1")
+        result = self.converter.to_refinitiv_format(parsed, vendor_map)
+        assert result == "LCOc1"
+        
+        # Continuous without vendor_map
+        result = self.converter.to_refinitiv_format(parsed, {})
+        assert result == "BRNc1"
+    
+    def test_high_level_vendor_methods(self):
+        """Test high-level convenience methods."""
+        # TradingView
+        result = SymbologyConverter.tradingview(
+            'BRN', {'tradingview_symbol': 'BRN', 'tradingview_feed': 'ICEEUR'},
+            year=2026, month='H', include_feed=True
+        )
+        assert result == "ICEEUR:BRNH26"
+        
+        # TradingView without feed
+        result = SymbologyConverter.tradingview(
+            'BRN', {'tradingview_symbol': 'BRN', 'tradingview_feed': 'ICEEUR'},
+            year=2026, month='H', include_feed=False
+        )
+        assert result == "BRNH26"
+        
+        # TradingView continuous
+        result = SymbologyConverter.tradingview(
+            'BRN', {'tradingview_symbol': 'BRN', 'tradingview_feed': 'ICEEUR'},
+            continuous_index=1, include_feed=True
+        )
+        assert result == "ICEEUR:BRN1!"
+        
+        # Refinitiv
+        result = SymbologyConverter.refinitiv(
+            'BRN', {'refinitiv_symbol': 'LCO'},
+            year=2026, month='H'
+        )
+        assert result == "LCOH6"
+        
+        # Refinitiv continuous
+        result = SymbologyConverter.refinitiv(
+            'BRN', {'refinitiv_symbol': 'LCO'},
+            continuous_index=1
+        )
+        assert result == "LCOc1"
+
+
+class TestDataSourceURLGeneration:
+    """Test URL generation in datasources."""
+    
+    def test_tradingview_datasource_urls(self):
+        """Test TradingView datasource URL generation."""
+        from futureskit.datasources import TradingViewDataSource
+        
+        tv = TradingViewDataSource()
+        
+        # Test contract URL
+        urls = tv.get_contract_url('BRN', 2026, 'H')
+        assert 'tradingview' in urls
+        assert 'BRNH2026' in urls['tradingview']
+        # Note: Contract URLs now have both chart and overview
+        
+        # Test continuous URL
+        urls = tv.get_continuous_url('BRN', 1)
+        assert 'BRN1!' in urls['tradingview']
+        
+        # Test symbol without mapping (should just use the symbol as-is)
+        urls = tv.get_contract_url('XYZ', 2026, 'H')
+        assert 'XYZH2026' in urls['tradingview']
+    
+    def test_refinitiv_datasource_urls(self):
+        """Test Refinitiv datasource URL generation."""
+        from futureskit.datasources import RefinitivDataSource
+        
+        ref = RefinitivDataSource()
+        
+        # Test contract URL (expects RIC symbol)
+        urls = ref.get_contract_url('LCO', 2026, 'H')
+        assert 'refinitiv' in urls
+        assert 'LCOH6' in urls['refinitiv']
+        
+        # Test continuous URL
+        urls = ref.get_continuous_url('LCO', 1)
+        assert 'LCOc1' in urls['refinitiv']
+    
+    def test_datasource_data_methods_not_implemented(self):
+        """Test that data methods raise NotImplementedError."""
+        from futureskit.datasources import TradingViewDataSource, RefinitivDataSource
+        
+        tv = TradingViewDataSource()
+        ref = RefinitivDataSource()
+        
+        with pytest.raises(NotImplementedError):
+            tv.series(['BRN'])
+        
+        with pytest.raises(NotImplementedError):
+            ref.curve(['BRN'])
+        
+        with pytest.raises(NotImplementedError):
+            tv.contracts(['BRN'])
+        
+        with pytest.raises(NotImplementedError):
+            ref.series(['BRN'])
+    
+    def test_datasource_supports_url_generation(self):
+        """Test that datasources report they support URL generation."""
+        from futureskit.datasources import TradingViewDataSource, RefinitivDataSource
+        
+        tv = TradingViewDataSource()
+        ref = RefinitivDataSource()
+        
+        assert tv.supports_url_generation() == True
+        assert ref.supports_url_generation() == True
+    
+    def test_tradingview_contract_chain(self):
+        """Test TradingView mock contract chain generation."""
+        from futureskit.datasources import TradingViewDataSource
+        
+        tv = TradingViewDataSource()
+        contracts = tv.get_contract_chain('BRN')
+        
+        # Should generate 12 monthly contracts
+        assert len(contracts) == 12
+        
+        # Check first contract
+        first = contracts[0]
+        assert first.root_symbol == 'BRN'
+        assert first.datasource == tv
+    
+    def test_refinitiv_contract_chain(self):
+        """Test Refinitiv contract chain (currently empty)."""
+        from futureskit.datasources import RefinitivDataSource
+        
+        ref = RefinitivDataSource()
+        contracts = ref.get_contract_chain('BRN')
+        
+        # Should return empty list for now
+        assert contracts == []

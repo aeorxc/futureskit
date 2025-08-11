@@ -179,6 +179,76 @@ class TestFuturesContract:
         
         # Non-date fields should remain as-is
         assert contract.regular_field == 'not a date'
+    
+    def test_get_urls(self):
+        """Test URL generation for FuturesContract."""
+        from futureskit.datasources import TradingViewDataSource
+        from unittest.mock import Mock
+        
+        # Create contract with datasource
+        tv = TradingViewDataSource()
+        contract = FuturesContract('BRN', 2026, 'H', datasource=tv)
+        
+        # Mock future with vendor_map
+        mock_future = Mock()
+        mock_future.vendor_map = {
+            'tradingview_symbol': 'BRN',
+            'tradingview_feed': 'ICEEUR'
+        }
+        contract.future = mock_future
+        
+        urls = contract.get_urls()
+        assert 'tradingview' in urls
+        assert 'ICEEUR:BRNH2026' in urls['tradingview']
+        # Note: Contracts now have both chart and overview URLs
+    
+    def test_to_dict_with_urls(self):
+        """Test to_dict method includes URLs."""
+        from futureskit.datasources import TradingViewDataSource
+        
+        tv = TradingViewDataSource()
+        contract = FuturesContract('BRN', 2026, 'H', datasource=tv)
+        
+        # Test with URLs
+        data = contract.to_dict(include_urls=True)
+        assert 'root_symbol' in data
+        assert data['root_symbol'] == 'BRN'
+        assert 'year' in data
+        assert data['year'] == 2026
+        assert 'month_code' in data
+        assert data['month_code'] == 'H'
+        assert 'urls' in data
+        
+        # Test without URLs
+        data = contract.to_dict(include_urls=False)
+        assert 'urls' not in data
+    
+    def test_formats_property(self):
+        """Test the formats property for vendor-specific formatting."""
+        from unittest.mock import Mock
+        
+        contract = FuturesContract('BRN', 2026, 'H')
+        
+        # Mock future with vendor_map
+        mock_future = Mock()
+        mock_future.vendor_map = {
+            'tradingview_symbol': 'BRN',
+            'tradingview_feed': 'ICEEUR',
+            'refinitiv_symbol': 'LCO'
+        }
+        contract.future = mock_future
+        
+        # Test formats property
+        assert hasattr(contract, 'formats')
+        formats = contract.formats
+        
+        # Test TradingView format
+        tv_format = formats.tradingview(include_feed=True)
+        assert tv_format == "ICEEUR:BRNH26"
+        
+        # Test Refinitiv format
+        ref_format = formats.refinitiv()
+        assert ref_format == "LCOH6"
 
 
 class TestContractChain:

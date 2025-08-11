@@ -122,6 +122,58 @@ class FuturesContract:
         formats.bloomberg = partial(SymbologyConverter.bloomberg, self.root_symbol, vendor_map, self.year, self.month_code)
         
         return formats
+    
+    def get_urls(self) -> Dict[str, str]:
+        """
+        Get URLs for this contract from the datasource.
+        
+        Returns:
+            Dictionary of service names to URLs
+        """
+        if not self.datasource or not hasattr(self.datasource, 'get_contract_url'):
+            return {}
+        
+        # Get vendor_map from parent Future object if available
+        vendor_map = self.future.vendor_map if self.future and hasattr(self.future, 'vendor_map') else {}
+        
+        # Delegate to datasource - it handles all vendor-specific logic internally
+        return self.datasource.get_contract_url(self.root_symbol, self.year, self.month_code, vendor_map)
+    
+    def to_dict(self, include_urls: bool = False) -> Dict[str, Any]:
+        """
+        Convert contract to dictionary representation.
+        
+        Args:
+            include_urls: Whether to include URLs in the output
+            
+        Returns:
+            Dictionary with contract data
+        """
+        data = {
+            'root_symbol': self.root_symbol,
+            'year': self.year,
+            'month_code': self.month_code,
+            'month_num': self.month_num,
+            'delivery_date': self.delivery_date.isoformat() if self.delivery_date else None,
+            'canonical': self.to_canonical(),
+            'short_year': self.to_short_year(),
+        }
+        
+        # Add exchange and feed if available
+        if self.exchange:
+            data['exchange'] = self.exchange
+        if self.feed:
+            data['feed'] = self.feed
+            
+        # Add metadata if loaded
+        if self._metadata:
+            data['metadata'] = self._metadata
+            
+        # Add URLs if requested
+        if include_urls:
+            data['urls'] = self.get_urls()
+            
+        return data
 
     def __repr__(self) -> str:
         return f"FuturesContract({self.root_symbol!r}, {self.year}, {self.month_code!r})"
