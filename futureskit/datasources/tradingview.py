@@ -30,7 +30,7 @@ class TradingViewDataSource(FuturesDataSource):
         >>> tv = TradingViewDataSource()
         >>> future = Future('BRN', datasource=tv, vendor_map={
         ...     'tradingview_symbol': 'BRN',
-        ...     'tradingview_feed': 'ICEEUR'
+        ...     'tradingview_exchange': 'ICEEUR'
         ... })
         >>> contract = future.contract(2026, 'H')
         >>> urls = contract.get_urls()
@@ -132,7 +132,7 @@ class TradingViewDataSource(FuturesDataSource):
         
         # Get TradingView-specific symbol and feed
         tv_symbol = vendor_map.get('tradingview_symbol', root_symbol)
-        feed = vendor_map.get('tradingview_feed', '')
+        feed = vendor_map.get('tradingview_exchange', '')
         
         # Build contract symbol with full year (YYYY format)
         contract_symbol = f"{tv_symbol}{month_code}{year}"
@@ -169,7 +169,7 @@ class TradingViewDataSource(FuturesDataSource):
         
         # Get TradingView-specific symbol and feed
         tv_symbol = vendor_map.get('tradingview_symbol', root_symbol)
-        feed = vendor_map.get('tradingview_feed', '')
+        feed = vendor_map.get('tradingview_exchange', '')
         
         # Build continuous symbol
         continuous_symbol = f"{tv_symbol}{depth}!"

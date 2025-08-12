@@ -173,7 +173,7 @@ class SymbologyConverter:
         
         # Get TradingView-specific root symbol (default to parsed.root)
         tv_root = vendor_map.get('tradingview_symbol', parsed.root)
-        tv_feed = vendor_map.get('tradingview_feed', '')
+        tv_feed = vendor_map.get('tradingview_exchange', '')
         
         if parsed.is_continuous:
             # TradingView continuous format: BRN1!, CL2!
