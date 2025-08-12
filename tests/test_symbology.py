@@ -172,7 +172,7 @@ class TestSymbologyConverter:
         """Test conversion to TradingView format."""
         # Regular contract with feed
         parsed = self.notation.parse("BRN_2026F")
-        vendor_map = {'tradingview_symbol': 'BRN', 'tradingview_feed': 'ICEEUR'}
+        vendor_map = {'tradingview_symbol': 'BRN', 'tradingview_exchange': 'ICEEUR'}
         result = self.converter.to_tradingview_format(parsed, vendor_map, include_feed=True)
         assert result == "ICEEUR:BRNF26"
         
@@ -218,21 +218,21 @@ class TestSymbologyConverter:
         """Test high-level convenience methods."""
         # TradingView
         result = SymbologyConverter.tradingview(
-            'BRN', {'tradingview_symbol': 'BRN', 'tradingview_feed': 'ICEEUR'},
+            'BRN', {'tradingview_symbol': 'BRN', 'tradingview_exchange': 'ICEEUR'},
             year=2026, month='H', include_feed=True
         )
         assert result == "ICEEUR:BRNH26"
         
         # TradingView without feed
         result = SymbologyConverter.tradingview(
-            'BRN', {'tradingview_symbol': 'BRN', 'tradingview_feed': 'ICEEUR'},
+            'BRN', {'tradingview_symbol': 'BRN', 'tradingview_exchange': 'ICEEUR'},
             year=2026, month='H', include_feed=False
         )
         assert result == "BRNH26"
         
         # TradingView continuous
         result = SymbologyConverter.tradingview(
-            'BRN', {'tradingview_symbol': 'BRN', 'tradingview_feed': 'ICEEUR'},
+            'BRN', {'tradingview_symbol': 'BRN', 'tradingview_exchange': 'ICEEUR'},
             continuous_index=1, include_feed=True
         )
         assert result == "ICEEUR:BRN1!"

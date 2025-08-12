@@ -193,7 +193,7 @@ class TestFuturesContract:
         mock_future = Mock()
         mock_future.vendor_map = {
             'tradingview_symbol': 'BRN',
-            'tradingview_feed': 'ICEEUR'
+            'tradingview_exchange': 'ICEEUR'  # Changed from tradingview_feed to tradingview_exchange
         }
         contract.future = mock_future
         
@@ -233,7 +233,7 @@ class TestFuturesContract:
         mock_future = Mock()
         mock_future.vendor_map = {
             'tradingview_symbol': 'BRN',
-            'tradingview_feed': 'ICEEUR',
+            'tradingview_exchange': 'ICEEUR',  # Changed from tradingview_feed to tradingview_exchange
             'refinitiv_symbol': 'LCO'
         }
         contract.future = mock_future
