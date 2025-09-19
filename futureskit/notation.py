@@ -62,11 +62,21 @@ class ParsedSymbol:
     contract_index: Optional[int] = None
     warnings: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
+    # Optional extended fields
+    kind: Optional[str] = None            # 'contract' | 'continuous' | 'quarter' | 'calendar'
+    quarter: Optional[int] = None         # 1..4
+    calendar_year: Optional[int] = None   # YYYY
     
     def to_string(self) -> str:
         """Convert back to canonical string format."""
         if self.is_continuous:
             return f"{self.root}.{self.roll_rule}.{self.contract_index}"
+        # Quarter canonical
+        if self.quarter and self.year:
+            return f"{self.root}_{self.year}Q{self.quarter}"
+        # Calendar canonical
+        if self.calendar_year:
+            return f"{self.root}_CAL{self.calendar_year}"
         elif self.year and self.month:
             return f"{self.root}_{self.year}{self.month}"
         else:
@@ -83,6 +93,10 @@ class ParsedSymbol:
         if self.is_continuous:
             return bool(self.root and self.roll_rule and self.contract_index)
         else:
+            if self.quarter and self.year:
+                return bool(self.root)
+            if self.calendar_year:
+                return bool(self.root)
             # For regular futures, also check that month code is valid
             return bool(self.root and self.year and self.month and self.month in MONTH_CODES)
 
@@ -125,6 +139,22 @@ class FuturesNotation:
     
     # Continuous contract pattern: BRN.n.1 or OIL_BRENT.n.1
     CONTINUOUS_PATTERN = re.compile(r'^(.+)\.([a-zA-Z]+)\.(\d+)$')
+    # Additional notations
+    CONTINUOUS_M_PATTERN = re.compile(r'^(.+)_M(\d{2})$')
+    QUARTER_PATTERNS = [
+        re.compile(r'^(.+)_(\d{4})Q([1-4])$'),
+        re.compile(r'^(.+)_Q([1-4])_(\d{4})$'),
+    ]
+    CALENDAR_PATTERN = re.compile(r'^(.+)_CAL(\d{4})$')
+    # Continuous M-notation: ROOT_M01
+    CONTINUOUS_M_PATTERN = re.compile(r'^(.+)_M(\d{2})$')
+    # Quarter patterns
+    QUARTER_PATTERNS = [
+        re.compile(r'^(.+)_(\d{4})Q([1-4])$'),
+        re.compile(r'^(.+)_Q([1-4])_(\d{4})$'),
+    ]
+    # Calendar pattern
+    CALENDAR_PATTERN = re.compile(r'^(.+)_CAL(\d{4})$')
     
     def parse(self, symbol: str) -> ParsedSymbol:
         """
@@ -151,15 +181,40 @@ class FuturesNotation:
                 continuous_match = self.CONTINUOUS_PATTERN.match(normalized)
                 if continuous_match:
                     return self._parse_continuous(continuous_match, symbol_clean)
-        
+
         # For non-continuous symbols, uppercase everything
         symbol = symbol_clean.upper()
-        
+
+        # Try M-notation continuous
+        m_match = self.CONTINUOUS_M_PATTERN.match(symbol)
+        if m_match:
+            root = m_match.group(1)
+            depth = int(m_match.group(2))
+            return ParsedSymbol(root=root, is_continuous=True, roll_rule='n', contract_index=depth, kind='continuous')
+
         # Try regular futures patterns
         for pattern in self.PATTERNS:
             match = pattern.match(symbol)
             if match:
                 return self._parse_regular(match)
+
+        # Quarter
+        for qp in self.QUARTER_PATTERNS:
+            qmatch = qp.match(symbol)
+            if qmatch:
+                groups = qmatch.groups()
+                # groups: (root, X, Y) where X/Y could be year or quarter
+                if len(groups[1]) == 4 and groups[1].isdigit():
+                    root, year_str, qstr = groups
+                else:
+                    root, qstr, year_str = groups
+                return ParsedSymbol(root=root, year=int(year_str), quarter=int(qstr), kind='quarter')
+
+        # Calendar
+        cmatch = self.CALENDAR_PATTERN.match(symbol)
+        if cmatch:
+            root, y = cmatch.groups()
+            return ParsedSymbol(root=root, calendar_year=int(y), kind='calendar')
         
         # Failed to parse - try to extract what we can
         return self._partial_parse(symbol)
