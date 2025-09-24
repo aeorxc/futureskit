@@ -16,6 +16,7 @@ from futureskit.continuous import (
     ContinuousFutureBuilder
 )
 from futureskit.datasources import FuturesDataSource
+from futureskit.conversion import ConvertibleMixin, ConversionContext
 from futureskit.exceptions import (
     FuturesKitError,
     InvalidSymbolError,
@@ -45,6 +46,9 @@ __all__ = [
     "ContinuousFutureBuilder",
     # Data sources
     "FuturesDataSource",
+    # Conversion utilities
+    "ConvertibleMixin",
+    "ConversionContext",
     # Exceptions
     "FuturesKitError",
     "InvalidSymbolError",

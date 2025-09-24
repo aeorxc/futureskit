@@ -12,12 +12,13 @@ import logging
 import pandas as pd
 
 from futureskit.notation import MONTH_CODES, MONTH_TO_CODE
+from futureskit.conversion import ConvertibleMixin
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
-class FuturesContract:
+class FuturesContract(ConvertibleMixin):
     """
     Represents a single, data-rich futures contract.
 
@@ -56,16 +57,31 @@ class FuturesContract:
 
     def __getattr__(self, name: str) -> Any:
         """Dynamic attribute access for price series and metadata."""
-        if self._price_data is not None and name in self._price_data.columns:
-            return self._price_data[name]
-        if name in self._metadata:
-            value = self._metadata[name]
-            if any(d in name for d in ['date', 'expiry', 'delivery']) and isinstance(value, str):
-                try:
-                    return pd.to_datetime(value).date()
-                except (ValueError, TypeError):
-                    pass
-            return value
+        # Prevent infinite recursion for properties we've added
+        if name in ('unit', 'currency', '_conversion_context', '_metadata', '_price_data'):
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
+        # Use object.__getattribute__ to avoid recursion
+        try:
+            price_data = object.__getattribute__(self, '_price_data')
+            if price_data is not None and name in price_data.columns:
+                return price_data[name]
+        except AttributeError:
+            pass
+
+        try:
+            metadata = object.__getattribute__(self, '_metadata')
+            if name in metadata:
+                value = metadata[name]
+                if any(d in name for d in ['date', 'expiry', 'delivery']) and isinstance(value, str):
+                    try:
+                        return pd.to_datetime(value).date()
+                    except (ValueError, TypeError):
+                        pass
+                return value
+        except AttributeError:
+            pass
+
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
     def __getitem__(self, key: str) -> Any:
@@ -187,6 +203,75 @@ class FuturesContract:
         if not isinstance(other, FuturesContract):
             return NotImplemented
         return self.delivery_date < other.delivery_date
+
+    # ConvertibleMixin helper methods
+    def _get_commodity_group(self) -> str:
+        """Get commodity group for conversions"""
+        if self.future and hasattr(self.future, 'metadata'):
+            return self.future.metadata.get('commodity_group', 'crude')
+        return self._metadata.get('commodity_group', 'crude')
+
+    def _get_contract_size(self) -> Optional[float]:
+        """Get contract size from metadata"""
+        if self.future and hasattr(self.future, 'metadata'):
+            return self.future.metadata.get('Contract_Size')
+        return self._metadata.get('Contract_Size')
+
+    def _get_contract_unit(self) -> str:
+        """Get contract unit from metadata"""
+        # Avoid recursion - don't call self.unit here
+        if self.future and hasattr(self.future, 'metadata'):
+            # Get current unit without recursion
+            current_unit = self.future.metadata.get('unit', 'bbl')
+            return self.future.metadata.get('contract_unit', current_unit)
+        current_unit = self._metadata.get('unit', 'bbl')
+        return self._metadata.get('contract_unit', current_unit)
+
+    def _get_symbol(self) -> str:
+        """Get symbol for logging/error messages"""
+        return f"{self.root_symbol}_{self.year}{self.month_code}"
+
+    @property
+    def unit(self) -> str:
+        """Current unit from metadata or conversion context"""
+        # Check for conversion context first (avoid attribute lookup)
+        if hasattr(self, '_conversion_context'):
+            context = object.__getattribute__(self, '_conversion_context')
+            if context and context.current_unit:
+                return context.current_unit
+        # Check future metadata
+        future = object.__getattribute__(self, 'future')
+        if future and hasattr(future, 'metadata'):
+            return future.metadata.get('unit', 'bbl')
+        # Check internal metadata
+        metadata = object.__getattribute__(self, '_metadata')
+        return metadata.get('unit', 'bbl') if metadata else 'bbl'
+
+    @property
+    def currency(self) -> str:
+        """Current currency from metadata or conversion context"""
+        # Check for conversion context first (avoid attribute lookup)
+        if hasattr(self, '_conversion_context'):
+            context = object.__getattribute__(self, '_conversion_context')
+            if context and context.current_currency:
+                return context.current_currency
+        # Check future metadata
+        future = object.__getattribute__(self, 'future')
+        if future and hasattr(future, 'metadata'):
+            return future.metadata.get('currency', 'USD')
+        # Check internal metadata
+        metadata = object.__getattribute__(self, '_metadata')
+        return metadata.get('currency', 'USD') if metadata else 'USD'
+
+    @property
+    def data(self) -> Optional[pd.DataFrame]:
+        """Access to price data for conversion operations"""
+        return self._price_data
+
+    @data.setter
+    def data(self, value: pd.DataFrame):
+        """Set price data (used by conversion operations)"""
+        self._price_data = value
 
 
 @dataclass
