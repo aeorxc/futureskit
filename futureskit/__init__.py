@@ -2,9 +2,17 @@
 futureskit - A Python library for parsing and working with futures contract symbols and notation.
 """
 
-__version__ = "0.1.0"
+try:
+    from futureskit._version import version as __version__
+except ImportError:
+    __version__ = "0.0.0+unknown"
 
-from futureskit.notation import FuturesNotation, ParsedSymbol, MONTH_CODES, MONTH_TO_CODE
+from futureskit.notation import (
+    FuturesNotation,
+    ParsedSymbol,
+    MONTH_CODES,
+    MONTH_TO_CODE,
+)
 from futureskit.symbology import SymbologyConverter
 from futureskit.contracts import FuturesContract, ContractChain
 from futureskit.futures import Future, ContinuousFuture
@@ -13,7 +21,7 @@ from futureskit.continuous import (
     RollDate,
     RollSchedule,
     AdjustmentMethod,
-    ContinuousFutureBuilder
+    ContinuousFutureBuilder,
 )
 from futureskit.datasources import FuturesDataSource
 from futureskit.conversion import ConvertibleMixin, ConversionContext
@@ -39,7 +47,7 @@ __all__ = [
     "MONTH_CODES",
     "MONTH_TO_CODE",
     # Continuous futures
-    "RollRule", 
+    "RollRule",
     "RollDate",
     "RollSchedule",
     "AdjustmentMethod",
