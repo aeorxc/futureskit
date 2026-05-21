@@ -6,13 +6,13 @@ build-backend = "setuptools.build_meta"
 name = "futureskit"
 dynamic = ["version"]
 description = "A Python library for parsing and working with futures contract symbols and notation"
-authors = [{name = "Your Name", email = "your.email@example.com"}]
+authors = [{name = "Gibran Afzal", email = "gibran.afzal@rwe.com"}]
 requires-python = ">=3.8"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Financial and Insurance Industry",
     "Topic :: Office/Business :: Financial :: Investment",
 ]
