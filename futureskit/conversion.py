@@ -5,19 +5,20 @@ This module provides mixins and utilities for converting between units, currenci
 and lots/volumes for futures contracts.
 """
 
-from typing import Optional, List, Any, TYPE_CHECKING
-from dataclasses import dataclass, replace
+from typing import Optional, List, TYPE_CHECKING
+from dataclasses import dataclass
 from copy import deepcopy
 import logging
 
 if TYPE_CHECKING:
-    import pandas as pd
+    pass
 
 logger = logging.getLogger(__name__)
 
 # Import commodutil for unit conversions if available
 try:
     from commodutil import convfactors
+
     HAS_COMMODUTIL = True
 except ImportError:
     HAS_COMMODUTIL = False
@@ -27,6 +28,7 @@ except ImportError:
 @dataclass
 class ConversionContext:
     """Tracks conversion history and context."""
+
     original_unit: Optional[str] = None
     current_unit: Optional[str] = None
     original_currency: Optional[str] = None
@@ -52,7 +54,7 @@ class ConvertibleMixin:
     - _get_symbol() method for logging
     """
 
-    def to_unit(self, target_unit: str) -> 'ConvertibleMixin':
+    def to_unit(self, target_unit: str) -> "ConvertibleMixin":
         """
         Convert prices to a different unit.
 
@@ -69,50 +71,56 @@ class ConvertibleMixin:
             return self
 
         if not HAS_COMMODUTIL:
-            raise ImportError("commodutil required for unit conversions. Install with: pip install commodutil")
+            raise ImportError(
+                "commodutil required for unit conversions. Install with: pip install commodutil"
+            )
 
         # Create a copy for immutability
         new_obj = self._copy_for_conversion()
 
         # Initialize conversion context if needed
-        if not hasattr(new_obj, '_conversion_context'):
+        if not hasattr(new_obj, "_conversion_context"):
             new_obj._conversion_context = ConversionContext(
-                original_unit=current_unit,
-                current_unit=current_unit
+                original_unit=current_unit, current_unit=current_unit
             )
 
         # Get commodity group for conversion
         commodity_group = new_obj._get_commodity_group()
 
         # Convert price data if available
-        if hasattr(new_obj, 'data') and new_obj.data is not None:
+        if hasattr(new_obj, "data") and new_obj.data is not None:
             try:
                 # Convert using commodutil
                 converted_data = convfactors.convert_price(
-                    new_obj.data,
-                    current_unit,
-                    target_unit,
-                    commodity_group
+                    new_obj.data, current_unit, target_unit, commodity_group
                 )
                 new_obj.data = converted_data
             except Exception as e:
-                logger.error(f"Failed to convert {new_obj._get_symbol()} from {current_unit} to {target_unit}: {e}")
+                logger.error(
+                    f"Failed to convert {new_obj._get_symbol()} from {current_unit} to {target_unit}: {e}"
+                )
                 raise
 
         # Update context
         new_obj._conversion_context.current_unit = target_unit
-        new_obj._conversion_context.conversions_applied.append(f"unit: {current_unit} -> {target_unit}")
+        new_obj._conversion_context.conversions_applied.append(
+            f"unit: {current_unit} -> {target_unit}"
+        )
 
         # Update metadata if object has future reference
-        if hasattr(new_obj, 'future') and new_obj.future:
-            if hasattr(new_obj.future, 'metadata'):
-                new_obj.future.metadata = new_obj.future.metadata.copy() if new_obj.future.metadata else {}
-                new_obj.future.metadata['unit'] = target_unit
-                new_obj.future.metadata['original_unit'] = new_obj._conversion_context.original_unit
+        if hasattr(new_obj, "future") and new_obj.future:
+            if hasattr(new_obj.future, "metadata"):
+                new_obj.future.metadata = (
+                    new_obj.future.metadata.copy() if new_obj.future.metadata else {}
+                )
+                new_obj.future.metadata["unit"] = target_unit
+                new_obj.future.metadata["original_unit"] = (
+                    new_obj._conversion_context.original_unit
+                )
 
         return new_obj
 
-    def to_currency(self, target_currency: str, fx_provider=None) -> 'ConvertibleMixin':
+    def to_currency(self, target_currency: str, fx_provider=None) -> "ConvertibleMixin":
         """
         Convert prices to a different currency.
 
@@ -137,10 +145,9 @@ class ConvertibleMixin:
         new_obj = self._copy_for_conversion()
 
         # Initialize conversion context if needed
-        if not hasattr(new_obj, '_conversion_context'):
+        if not hasattr(new_obj, "_conversion_context"):
             new_obj._conversion_context = ConversionContext(
-                original_currency=current_currency,
-                current_currency=current_currency
+                original_currency=current_currency, current_currency=current_currency
             )
 
         # TODO: Implement actual currency conversion when FX provider is available
@@ -151,13 +158,19 @@ class ConvertibleMixin:
         )
 
         # Update metadata if object has future reference
-        if hasattr(new_obj, 'future') and new_obj.future:
-            if hasattr(new_obj.future, 'metadata'):
-                new_obj.future.metadata = new_obj.future.metadata.copy() if new_obj.future.metadata else {}
-                new_obj.future.metadata['currency'] = target_currency
-                new_obj.future.metadata['original_currency'] = new_obj._conversion_context.original_currency
+        if hasattr(new_obj, "future") and new_obj.future:
+            if hasattr(new_obj.future, "metadata"):
+                new_obj.future.metadata = (
+                    new_obj.future.metadata.copy() if new_obj.future.metadata else {}
+                )
+                new_obj.future.metadata["currency"] = target_currency
+                new_obj.future.metadata["original_currency"] = (
+                    new_obj._conversion_context.original_currency
+                )
 
-        logger.info(f"Currency conversion from {current_currency} to {target_currency} tracked (not yet implemented)")
+        logger.info(
+            f"Currency conversion from {current_currency} to {target_currency} tracked (not yet implemented)"
+        )
 
         return new_obj
 
@@ -180,7 +193,7 @@ class ConvertibleMixin:
         """
         contract_size = self._get_contract_size()
         if contract_size is None:
-            raise ValueError(f"No Contract_Size defined for {self._get_symbol()}")
+            raise ValueError(f"No contract_size defined for {self._get_symbol()}")
 
         contract_unit = self._get_contract_unit()
 
@@ -193,20 +206,21 @@ class ConvertibleMixin:
 
         # Convert to target unit
         if not HAS_COMMODUTIL:
-            raise ImportError("commodutil required for unit conversions. Install with: pip install commodutil")
+            raise ImportError(
+                "commodutil required for unit conversions. Install with: pip install commodutil"
+            )
 
         commodity_group = self._get_commodity_group()
 
         try:
             converted_volume = convfactors.convert_volume(
-                volume,
-                contract_unit,
-                unit,
-                commodity_group
+                volume, contract_unit, unit, commodity_group
             )
             return converted_volume
         except Exception as e:
-            logger.error(f"Failed to convert volume from {contract_unit} to {unit}: {e}")
+            logger.error(
+                f"Failed to convert volume from {contract_unit} to {unit}: {e}"
+            )
             raise
 
     def volume_to_lots(self, volume: float, unit: Optional[str] = None) -> float:
@@ -228,7 +242,7 @@ class ConvertibleMixin:
         """
         contract_size = self._get_contract_size()
         if contract_size is None:
-            raise ValueError(f"No Contract_Size defined for {self._get_symbol()}")
+            raise ValueError(f"No contract_size defined for {self._get_symbol()}")
 
         contract_unit = self._get_contract_unit()
 
@@ -239,19 +253,20 @@ class ConvertibleMixin:
         # Convert volume to contract units if needed
         if unit != contract_unit:
             if not HAS_COMMODUTIL:
-                raise ImportError("commodutil required for unit conversions. Install with: pip install commodutil")
+                raise ImportError(
+                    "commodutil required for unit conversions. Install with: pip install commodutil"
+                )
 
             commodity_group = self._get_commodity_group()
 
             try:
                 volume = convfactors.convert_volume(
-                    volume,
-                    unit,
-                    contract_unit,
-                    commodity_group
+                    volume, unit, contract_unit, commodity_group
                 )
             except Exception as e:
-                logger.error(f"Failed to convert volume from {unit} to {contract_unit}: {e}")
+                logger.error(
+                    f"Failed to convert volume from {unit} to {contract_unit}: {e}"
+                )
                 raise
 
         # Calculate number of lots
@@ -266,11 +281,11 @@ class ConvertibleMixin:
         Returns:
             List of conversion descriptions
         """
-        if hasattr(self, '_conversion_context') and self._conversion_context:
+        if hasattr(self, "_conversion_context") and self._conversion_context:
             return self._conversion_context.conversions_applied
         return []
 
-    def _copy_for_conversion(self) -> 'ConvertibleMixin':
+    def _copy_for_conversion(self) -> "ConvertibleMixin":
         """
         Create a copy of the object for conversion.
 
