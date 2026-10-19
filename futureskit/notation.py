@@ -5,9 +5,15 @@ Core futures notation parsing functionality.
 import re
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import date
 
-from futureskit.exceptions import InvalidMonthCodeError, InvalidYearError, InvalidRollRuleError
+from futureskit.exceptions import InvalidMonthCodeError, InvalidYearError
+
+# Vendor symbol spelling lives in futureskit.vendors, never here. Contract
+# grammar is identically true at any firm with any vendor; how Refinitiv or
+# TradingView happens to spell a contract this year is not. This module must
+# import nothing from futureskit.vendors — the dependency runs one way only,
+# and tests/vendors/test_vendor_boundary.py pins it.
 
 
 # Futures month codes mapping
@@ -37,7 +43,6 @@ ROLL_RULES = {
     'fn': 'first_notice',
     'lt': 'last_trade',
 }
-
 
 @dataclass
 class ParsedSymbol:
@@ -88,6 +93,35 @@ class ParsedSymbol:
                 parts.append(self.month)
             return "".join(parts)
     
+    @property
+    def delivery_month(self) -> Optional[date]:
+        """The first of the delivery month, for a dated contract only.
+
+        Quarters, calendars, continuous series and partial parses have no
+        single delivery month and return ``None``. Only ``kind == 'contract'``
+        answers, so a caller cannot silently take the front of a quarter strip
+        as though it were a dated contract.
+
+        Raises:
+            InvalidMonthCodeError: If the contract carries a month that is not
+                a futures month code. A dated contract with an unusable month
+                is a parse defect, and returning ``None`` would hide it among
+                the legitimately monthless kinds.
+        """
+        if self.kind != 'contract' or self.year is None or self.month is None:
+            return None
+        code = str(self.month).strip().upper()
+        if code not in MONTH_CODES:
+            raise InvalidMonthCodeError(
+                f"Contract {self.to_string()!r} carries invalid futures month "
+                f"code {self.month!r}"
+            )
+        return date(self.year, MONTH_CODES[code], 1)
+
+    def to_date(self) -> Optional[date]:
+        """Return :attr:`delivery_month`, mirroring :meth:`to_string`."""
+        return self.delivery_month
+
     def is_valid(self) -> bool:
         """Check if this represents a fully valid symbol."""
         if self.is_continuous:
@@ -137,15 +171,55 @@ class FuturesNotation:
         re.compile(r'^([A-Z]+)[-\s](\d{4})([FGHJKMNQUVXZ])$'),
     ]
     
+    def __init__(self, today: date | None = None):
+        self._today = today
+
     # Continuous contract pattern: BRN.n.1 or OIL_BRENT.n.1
     CONTINUOUS_PATTERN = re.compile(r'^(.+)\.([a-zA-Z]+)\.(\d+)$')
-    # Additional notations
-    CONTINUOUS_M_PATTERN = re.compile(r'^(.+)_M(\d{2})$')
-    QUARTER_PATTERNS = [
-        re.compile(r'^(.+)_(\d{4})Q([1-4])$'),
-        re.compile(r'^(.+)_Q([1-4])_(\d{4})$'),
-    ]
-    CALENDAR_PATTERN = re.compile(r'^(.+)_CAL(\d{4})$')
+    # Strict canonical contract patterns.  These intentionally exclude vendor
+    # prefixes and shorthand aliases accepted by ``parse``.
+    CANONICAL_ROOT_PATTERN = r'[A-Z0-9]+(?:_[A-Z0-9]+)*'
+    CANONICAL_MONTHLY_PATTERN = re.compile(
+        rf'^({CANONICAL_ROOT_PATTERN})_(\d{{4}})([FGHJKMNQUVXZ])$'
+    )
+    CANONICAL_MONTHLY_SHAPE_PATTERN = re.compile(
+        rf'^({CANONICAL_ROOT_PATTERN})_\d{{4}}[A-Z]+$'
+    )
+    CANONICAL_QUARTER_SHAPE_PATTERNS = (
+        re.compile(rf'^({CANONICAL_ROOT_PATTERN})_\d{{4}}Q.+$'),
+        re.compile(rf'^({CANONICAL_ROOT_PATTERN})_Q.+_\d{{4}}$'),
+    )
+    CANONICAL_CALENDAR_SHAPE_PATTERN = re.compile(
+        rf'^({CANONICAL_ROOT_PATTERN})_CAL\d{{4}}.*$'
+    )
+    CANONICAL_QUARTER_PATTERN = re.compile(
+        rf'^({CANONICAL_ROOT_PATTERN})_(\d{{4}})Q([1-4])$'
+    )
+    CANONICAL_ALTERNATE_QUARTER_PATTERN = re.compile(
+        rf'^({CANONICAL_ROOT_PATTERN})_Q([1-4])_(\d{{4}})$'
+    )
+    CANONICAL_CALENDAR_PATTERN = re.compile(
+        rf'^({CANONICAL_ROOT_PATTERN})_CAL(\d{{4}})$'
+    )
+    LEGACY_YEAR_MONTH_PATTERN = re.compile(
+        rf'^({CANONICAL_ROOT_PATTERN})(\d{{2}})([FGHJKMNQUVXZ])$'
+    )
+    LEGACY_MONTH_YEAR_PATTERN = re.compile(
+        rf'^({CANONICAL_ROOT_PATTERN})([FGHJKMNQUVXZ])(\d{{2}})$'
+    )
+    LEGACY_SEPARATED_YEAR_MONTH_PATTERN = re.compile(
+        rf'^({CANONICAL_ROOT_PATTERN})[- ](\d{{2}}|\d{{4}})'
+        rf'([FGHJKMNQUVXZ])$'
+    )
+    REFERENCE_CONTINUOUS_ROOT_PATTERN = (
+        rf'{CANONICAL_ROOT_PATTERN}(?:\.{CANONICAL_ROOT_PATTERN})*'
+    )
+    REFERENCE_CONTINUOUS_PATTERN = re.compile(
+        rf'^({REFERENCE_CONTINUOUS_ROOT_PATTERN})\.([A-Z]+)\.(\d+)$'
+    )
+    REFERENCE_CONTINUOUS_M_PATTERN = re.compile(
+        rf'^({REFERENCE_CONTINUOUS_ROOT_PATTERN})_M(\d{{2}})$'
+    )
     # Continuous M-notation: ROOT_M01
     CONTINUOUS_M_PATTERN = re.compile(r'^(.+)_M(\d{2})$')
     # Quarter patterns
@@ -218,6 +292,220 @@ class FuturesNotation:
         
         # Failed to parse - try to extract what we can
         return self._partial_parse(symbol)
+
+    def parse_canonical_contract(self, symbol: str) -> Optional[ParsedSymbol]:
+        """Parse a strict canonical contract reference.
+
+        Unlike :meth:`parse`, this method accepts only canonical contract
+        notation: ``ROOT_YYYYM``, either supported canonical quarter form, or
+        ``ROOT_CALYYYY``.  It is intended for callers that must distinguish an
+        exact contract from a root symbol without accidentally accepting a
+        vendor alias.
+
+        This is a recognition API, not a validator. Bare roots, non-canonical
+        aliases, and malformed inputs all return ``None``. The method never
+        guesses whether an otherwise valid root was intended as a contract.
+
+        Args:
+            symbol: Candidate canonical contract reference.
+
+        Returns:
+            A parsed contract, quarter, or calendar symbol; otherwise ``None``.
+
+        """
+        if not symbol:
+            return None
+
+        normalized = symbol.strip().upper()
+        if not normalized:
+            return None
+
+        monthly_match = self.CANONICAL_MONTHLY_PATTERN.fullmatch(normalized)
+        if monthly_match:
+            root, year, month = monthly_match.groups()
+            year_value = self._canonical_year(year)
+            if year_value is None:
+                return None
+            return ParsedSymbol(
+                root=root,
+                year=year_value,
+                month=month,
+                kind='contract',
+            )
+
+        quarter_match = self.CANONICAL_QUARTER_PATTERN.fullmatch(normalized)
+        if quarter_match:
+            root, year, quarter = quarter_match.groups()
+            year_value = self._canonical_year(year)
+            if year_value is None:
+                return None
+            return ParsedSymbol(
+                root=root,
+                year=year_value,
+                quarter=int(quarter),
+                kind='quarter',
+            )
+
+        alternate_quarter_match = (
+            self.CANONICAL_ALTERNATE_QUARTER_PATTERN.fullmatch(normalized)
+        )
+        if alternate_quarter_match:
+            root, quarter, year = alternate_quarter_match.groups()
+            year_value = self._canonical_year(year)
+            if year_value is None:
+                return None
+            return ParsedSymbol(
+                root=root,
+                year=year_value,
+                quarter=int(quarter),
+                kind='quarter',
+            )
+
+        calendar_match = self.CANONICAL_CALENDAR_PATTERN.fullmatch(normalized)
+        if calendar_match:
+            root, year = calendar_match.groups()
+            year_value = self._canonical_year(year)
+            if year_value is None:
+                return None
+            return ParsedSymbol(
+                root=root,
+                calendar_year=year_value,
+                kind='calendar',
+            )
+
+        return None
+
+    def parse_contract_reference(self, symbol: str) -> Optional[ParsedSymbol]:
+        """Recognize a supported, unqualified futures contract reference.
+
+        This method extends :meth:`parse_canonical_contract` with the explicit
+        legacy monthly and continuous aliases supported by FuturesKit. It is a
+        recognition API: bare roots, malformed references, and provider- or
+        feed-qualified symbols return ``None`` rather than being partially
+        parsed or guessed.
+
+        Supported references are:
+
+        * canonical monthly, quarter, and calendar contracts;
+        * monthly aliases such as ``BRN26Z``, ``BRNZ26``, ``BRN-26Z``, and
+          ``BRN 26Z``;
+        * continuous aliases such as ``BRN.n.1`` and ``BRN_M01``.
+
+        Args:
+            symbol: Candidate contract reference.
+
+        Returns:
+            A fully recognized symbol, or ``None``.
+
+        """
+        canonical = self.parse_canonical_contract(symbol)
+        if canonical is not None:
+            return canonical
+
+        if not symbol:
+            return None
+
+        normalized = symbol.strip().upper()
+        if not normalized:
+            return None
+
+        continuous_match = self.REFERENCE_CONTINUOUS_PATTERN.fullmatch(
+            normalized
+        )
+        if continuous_match:
+            root, roll_rule, contract_index = continuous_match.groups()
+            roll_rule = roll_rule.lower()
+            index_value = int(contract_index)
+            if roll_rule not in ROLL_RULES or index_value < 1:
+                return None
+            return ParsedSymbol(
+                root=root,
+                is_continuous=True,
+                roll_rule=roll_rule,
+                contract_index=index_value,
+                kind='continuous',
+            )
+
+        continuous_m_match = self.REFERENCE_CONTINUOUS_M_PATTERN.fullmatch(
+            normalized
+        )
+        if continuous_m_match:
+            root, contract_index = continuous_m_match.groups()
+            index_value = int(contract_index)
+            if index_value < 1:
+                return None
+            return ParsedSymbol(
+                root=root,
+                is_continuous=True,
+                roll_rule='n',
+                contract_index=index_value,
+                kind='continuous',
+            )
+
+        # A malformed canonical-looking reference must not be reinterpreted
+        # as a compact short-year alias with a longer root. For example,
+        # ``CL_0999Z`` is not ``CL_09`` plus ``99Z``. These guards come after
+        # explicit continuous recognition so an unambiguous continuous root
+        # may itself contain calendar- or quarter-like text.
+        if self.CANONICAL_MONTHLY_SHAPE_PATTERN.fullmatch(normalized):
+            return None
+        if any(
+            pattern.fullmatch(normalized)
+            for pattern in self.CANONICAL_QUARTER_SHAPE_PATTERNS
+        ):
+            return None
+        if self.CANONICAL_CALENDAR_SHAPE_PATTERN.fullmatch(normalized):
+            return None
+
+        for pattern in (
+            self.LEGACY_YEAR_MONTH_PATTERN,
+            self.LEGACY_MONTH_YEAR_PATTERN,
+        ):
+            legacy_match = pattern.fullmatch(normalized)
+            if legacy_match is None:
+                continue
+
+            root, first, second = legacy_match.groups()
+            if not re.search(r'[A-Z]', root) or root[-1].isdigit():
+                return None
+            if first.isdigit():
+                year, month = first, second
+            else:
+                month, year = first, second
+            return ParsedSymbol(
+                root=root,
+                year=self._normalize_year(year),
+                month=month,
+                kind='contract',
+            )
+
+        separated_match = self.LEGACY_SEPARATED_YEAR_MONTH_PATTERN.fullmatch(
+            normalized
+        )
+        if separated_match:
+            root, year, month = separated_match.groups()
+            if len(year) == 4:
+                year_value = self._canonical_year(year)
+                if year_value is None:
+                    return None
+            else:
+                year_value = self._normalize_year(year)
+            return ParsedSymbol(
+                root=root,
+                year=year_value,
+                month=month,
+                kind='contract',
+            )
+
+        return None
+
+    @staticmethod
+    def _canonical_year(year: str) -> Optional[int]:
+        """Return a valid canonical year without applying alias normalization."""
+        year_value = int(year)
+        if year_value < 1000:
+            return None
+        return year_value
     
     def _parse_continuous(self, match: re.Match, original: str) -> ParsedSymbol:
         """Parse a continuous contract symbol."""
@@ -277,7 +565,7 @@ class FuturesNotation:
         
         if year < 100:
             # 2-digit year - use 20-year rule
-            current_year = datetime.now().year
+            current_year = (self._today or date.today()).year
             current_century = (current_year // 100) * 100
             current_year_2digit = current_year % 100
             
