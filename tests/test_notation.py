@@ -3,7 +3,7 @@ Tests for futures notation parsing.
 """
 
 import pytest
-from datetime import datetime
+from datetime import date, datetime
 from futureskit import FuturesNotation, ParsedSymbol
 
 
@@ -38,6 +38,11 @@ class TestFuturesNotation:
         result = self.notation.parse("BRN99Z")
         # 99 is more than 10 years from current, so should be 1999
         assert result.year == 1999
+
+    def test_short_year_format_uses_supplied_today(self):
+        notation = FuturesNotation(today=date(2020, 1, 1))
+
+        assert notation.parse("BRN31F").year == 1931
     
     def test_month_before_year_format(self):
         """Test parsing BRNF26 format."""

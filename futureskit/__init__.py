@@ -2,29 +2,26 @@
 futureskit - A Python library for parsing and working with futures contract symbols and notation.
 """
 
-try:
-    from futureskit._version import version as __version__
-except ImportError:
-    __version__ = "0.0.0+unknown"
-
+from futureskit import forwards
+from futureskit.forwards.continuous import (
+    generate_multiple_continuous_series,
+    generate_series,
+)
+from futureskit.forwards.rollspec import Adjustment, ExpiryOffset, RollSpec
+from futureskit.forwards.schema import validate_contract_matrix, validate_expiry_dates
 from futureskit.notation import (
     FuturesNotation,
     ParsedSymbol,
     MONTH_CODES,
     MONTH_TO_CODE,
 )
-from futureskit.symbology import SymbologyConverter
-from futureskit.contracts import FuturesContract, ContractChain
-from futureskit.futures import Future, ContinuousFuture
-from futureskit.continuous import (
-    RollRule,
-    RollDate,
-    RollSchedule,
-    AdjustmentMethod,
-    ContinuousFutureBuilder,
-)
-from futureskit.datasources import FuturesDataSource
-from futureskit.conversion import ConvertibleMixin, ConversionContext
+
+# Vendor symbol spelling is deliberately NOT re-exported here. Import it from
+# the vendor module that owns it, so an import line names the vendor a caller
+# depends on:
+#
+#     from futureskit.vendors.lseg import format_ric_contract
+#     from futureskit.vendors.tradingview import tradingview_chart_symbol
 from futureskit.exceptions import (
     FuturesKitError,
     InvalidSymbolError,
@@ -33,30 +30,20 @@ from futureskit.exceptions import (
 )
 
 __all__ = [
-    # Main futures classes
-    "Future",
-    "ContinuousFuture",
+    # Forwards DataFrame surface
+    "forwards",
+    "RollSpec",
+    "Adjustment",
+    "ExpiryOffset",
+    "generate_series",
+    "generate_multiple_continuous_series",
+    "validate_contract_matrix",
+    "validate_expiry_dates",
     # Notation parsing
     "FuturesNotation",
     "ParsedSymbol",
-    # Symbology conversion
-    "SymbologyConverter",
-    # Contract representations
-    "FuturesContract",
-    "ContractChain",
     "MONTH_CODES",
     "MONTH_TO_CODE",
-    # Continuous futures
-    "RollRule",
-    "RollDate",
-    "RollSchedule",
-    "AdjustmentMethod",
-    "ContinuousFutureBuilder",
-    # Data sources
-    "FuturesDataSource",
-    # Conversion utilities
-    "ConvertibleMixin",
-    "ConversionContext",
     # Exceptions
     "FuturesKitError",
     "InvalidSymbolError",

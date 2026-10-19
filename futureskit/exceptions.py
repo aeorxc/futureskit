@@ -21,8 +21,3 @@ class InvalidMonthCodeError(FuturesKitError):
 class InvalidYearError(FuturesKitError):
     """Raised when an invalid year is encountered."""
     pass
-
-
-class InvalidRollRuleError(FuturesKitError):
-    """Raised when an invalid roll rule is encountered."""
-    pass

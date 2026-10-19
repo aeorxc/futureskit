@@ -15,7 +15,6 @@ The library implements a flexible, data-provider-agnostic model for futures:
 - Dynamic attribute access for price series and metadata
 - Supports any fields provided by data sources
 - Methods: `to_canonical()`, `to_short_year()`, comparison operators
-- **Has `formats` property** for vendor-specific formatting (e.g., `contract.formats.tradingview()`)
 
 #### 2. ContractChain
 - Collection of futures contracts for a single commodity
@@ -26,15 +25,8 @@ The library implements a flexible, data-provider-agnostic model for futures:
 - Main factory class representing a futures product line (e.g., 'CL' for WTI)
 - Creates FuturesContract objects with data from providers
 - Provides shorthand access: `wti['H26']` returns March 2026 contract
-- Can create ContinuousFuture objects
 - **Stores `vendor_map`** for platform-specific symbol mappings (single source of truth)
-- FuturesContract and ContinuousFuture access vendor_map through Future reference
-
-#### 4. ContinuousFuture
-- Represents a continuous futures series
-- Configurable roll rules and adjustments
-- Currently has placeholder implementation for evaluation
-- **Has `formats` property** for vendor-specific formatting (e.g., `continuous.formats.tradingview()`)
+- FuturesContract accesses vendor_map through its Future reference
 
 ### Notation Parsing
 
@@ -51,19 +43,15 @@ Supported roll rules for continuous contracts:
 - `fn`: First notice
 - `lt`: Last trade
 
-### Symbology Conversion
+### Vendor RIC Formatting
 
-The `SymbologyConverter` class converts between vendor formats:
-- CME: `@BRN26F`
-- ICE: `BRN26F`
-- Bloomberg: `COF6 Comdty`
-- TradingView: `ICEEUR:BRNH25` (with exchange feed)
-- Refinitiv: `LCOH5` (RIC format)
-- Marketplace continuous: `BRN_001_MONTH`
+The implemented `ric_year_digits()`, `format_ric_contract()`, and
+`contract_code_from_ric()` helpers cover Refinitiv/LSEG RIC notation. The year
+width is venue-specific: ICE uses one digit (for example `LCOH5`) and CME Group
+venues use two (for example `CLH26`).
 
-**Two levels of API**:
-- Low-level: `to_tradingview_format(parsed, vendor_map)` - takes ParsedSymbol
-- High-level: `tradingview(root, vendor_map, year, month)` - builds ParsedSymbol internally
+Continuous and constant-maturity price series are constructed from DataFrame
+contract matrices in `futureskit.forwards`; they are not methods on `Future`.
 
 ## Key Design Features
 
@@ -85,21 +73,13 @@ The same contract object works with different data providers:
 ### 3. Lazy Loading
 Data is only loaded when a datasource is provided, keeping objects lightweight.
 
-### 4. Vendor Mapping Support
-Vendor-specific symbol mappings flow through object relationships:
+### 4. Vendor RIC Formatting
+Vendor RIC construction uses the implemented notation helpers directly:
 ```python
-vendor_map = {
-    'tradingview_symbol': 'BRN',
-    'tradingview_feed': 'ICEEUR',
-    'refinitiv_symbol': 'LCO',
-    'marketplace_feed': 'ICE_EuroFutures'
-}
+from futureskit import contract_code_from_ric, format_ric_contract
 
-future = Future('BRN', datasource, vendor_map=vendor_map)
-contract = future.contract(2025, 'H')
-
-# Contract accesses vendor_map through its Future reference
-contract.formats.tradingview()  # Returns "ICEEUR:BRNH25"
+format_ric_contract("LCO", "H", 2025, "ICE")  # "LCOH5"
+contract_code_from_ric("LCOH5")                 # "H5"
 ```
 
 ## Architecture Decisions
@@ -107,7 +87,7 @@ contract.formats.tradingview()  # Returns "ICEEUR:BRNH25"
 ### 1. Separation of Concerns
 - **Notation**: Parsing and symbol manipulation
 - **Contracts**: Data representation and access
-- **Symbology**: Format conversion between vendors
+- **Vendor notation**: Venue-specific RIC helpers in `notation.py`
 - **Futures**: High-level factory and operations
 
 ### 2. No Inheritance for Instruments
@@ -146,24 +126,14 @@ Unlike the proposed design, the current implementation doesn't use an abstract b
 
 ## Usage Examples
 
-### Vendor Format Conversion
+### Constant-Maturity Curve Construction
 ```python
-# Create futures with vendor mappings
-future = Future('BRN', datasource, vendor_map={
-    'tradingview_symbol': 'BRN',
-    'tradingview_feed': 'ICEEUR',
-    'refinitiv_symbol': 'LCO'
-})
+from futureskit.forwards import constant_maturity_grid
 
-# Get specific contract
-contract = future.contract(2025, 'H')
-contract.formats.tradingview()  # "ICEEUR:BRNH25"
-contract.formats.refinitiv()    # "LCOH5"
-
-# Get continuous series
-continuous = future.continuous('v.1')  # Front month by volume
-continuous.formats.tradingview()  # "ICEEUR:BRN1!"
-continuous.formats.refinitiv()    # "LCOc1"
+grid = constant_maturity_grid(contracts, expiry_dates, n_tenors=12)
+levels = grid.levels
+same_contract_changes = grid.changes
+delivery_identity = grid.contracts
 ```
 
 ## Migration from String-Based Systems
